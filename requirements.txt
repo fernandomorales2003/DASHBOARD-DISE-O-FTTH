@@ -1,0 +1,5 @@
+streamlit>=1.36.0
+plotly>=5.24.0
+pandas>=2.2.2
+xmltodict>=0.13.0
+zipfile36>=0.1.3
