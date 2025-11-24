@@ -327,14 +327,19 @@ with col_form:
     nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
 
     st.markdown("### Último punto clickeado en el mapa")
+
     if st.session_state.last_click is None:
-        st.info("Hacé clic en el mapa para elegir la posición.")
-        lat_click = None
-        lon_click = None
+    st.info("Hacé clic en el mapa para elegir la posición.")
+    lat_click = None
+    lon_click = None
     else:
-        lat_click = st.session_state.last_click["lat"]
-        lon_click = st.session_state.last_click["lon"]
+    lat_click = st.session_state.last_click.get("lat")
+    lon_click = st.session_state.last_click.get("lon")
+    if lat_click is not None and lon_click is not None:
         st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
+    else:
+        st.info("Hacé clic en el mapa para elegir la posición.")
+
 
     if st.button("➕ Agregar elemento en la posición clickeada"):
         if nombre.strip() == "":
@@ -472,12 +477,16 @@ with col_mapa:
                     tooltip=f"Fibra NODO → NAP {nap['nombre']}"
                 ).add_to(m)
 
-    # Mostrar mapa y capturar clic
-    mapa_data = st_folium(m, width="100%", height=500)
+ mapa_data = st_folium(m, width="100%", height=500)
 
-    # Guardar último clic
-    if mapa_data and mapa_data.get("last_clicked") is not None:
-        st.session_state.last_click = mapa_data["last_clicked"]
+# Guardar último clic normalizando lon/lng
+if mapa_data and mapa_data.get("last_clicked") is not None:
+    raw_click = mapa_data["last_clicked"]
+    lat = raw_click.get("lat")
+    lon = raw_click.get("lng") or raw_click.get("lon")  # según la versión puede venir como lng
+    if lat is not None and lon is not None:
+        st.session_state.last_click = {"lat": lat, "lon": lon}
+
 
 # -----------------------------
 # TABLA RESUMEN
