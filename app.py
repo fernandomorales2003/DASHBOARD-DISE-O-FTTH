@@ -1,5 +1,4 @@
 import folium
-from streamlit_folium import st_folium
 import pydeck as pdk
 import streamlit as st
 import pandas as pd
