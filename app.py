@@ -1,3 +1,4 @@
+import pydeck as pdk
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -275,3 +276,222 @@ with col_der:
     st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
 
     st.info(resultados["comentario"])
+
+import pydeck as pdk  # agregalo arriba junto con el resto de imports
+import math
+
+# =========================================================
+# SEGUNDA PARTE: DISEÑO FTTH EN MAPA (HUB, NODO, NAPs)
+# =========================================================
+
+st.markdown("---")
+st.header("Módulo de Diseño FTTH en Mapa (HUB → NODO → NAPs)")
+
+st.markdown(
+    """
+En este módulo podés **diseñar la red FTTH de forma manual**:
+- Colocar un **HUB**.
+- Definir un **NODO**.
+- Agregar varias **NAPs**.
+- Visualizar el tendido de **fibra entre HUB → NODO → NAPs** sobre un mapa.
+
+Ideal para mostrar el flujo de diseño durante la capacitación.
+"""
+)
+
+# Centro por defecto (ej: Mendoza)
+DEFAULT_LAT = -32.8894
+DEFAULT_LON = -68.8458
+
+# Estado para guardar los elementos
+if "ftth_elementos" not in st.session_state:
+    st.session_state.ftth_elementos = []  # lista de dicts {tipo, nombre, lat, lon}
+
+
+# -----------------------------
+# Formularios de alta de nodos
+# -----------------------------
+col_form, col_mapa = st.columns([0.9, 1.1])
+
+with col_form:
+    st.subheader("1. Agregar elementos de la red")
+
+    tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP"])
+    nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
+
+    c_lat, c_lon = st.columns(2)
+    with c_lat:
+        lat = st.number_input(
+            "Latitud",
+            value=DEFAULT_LAT,
+            format="%.6f"
+        )
+    with c_lon:
+        lon = st.number_input(
+            "Longitud",
+            value=DEFAULT_LON,
+            format="%.6f"
+        )
+
+    if st.button("➕ Agregar al diseño"):
+        if nombre.strip() == "":
+            st.warning("Por favor ingresá un nombre para el elemento.")
+        else:
+            st.session_state.ftth_elementos.append(
+                {
+                    "tipo": tipo,
+                    "nombre": nombre.strip(),
+                    "lat": lat,
+                    "lon": lon
+                }
+            )
+            st.success(f"{tipo} '{nombre}' agregado al diseño.")
+
+    # Opción para limpiar todo
+    if st.button("🗑️ Limpiar diseño completo"):
+        st.session_state.ftth_elementos = []
+        st.warning("Se han eliminado todos los elementos del diseño.")
+
+
+# -----------------------------
+# Construcción de DataFrames
+# -----------------------------
+df_elem = pd.DataFrame(st.session_state.ftth_elementos)
+
+with col_mapa:
+    st.subheader("2. Visualización en mapa")
+
+    if df_elem.empty:
+        st.info("Todavía no hay elementos cargados. Agregá un HUB, NODO o NAP para comenzar.")
+    else:
+        # Asignar color y tamaño según tipo
+        def color_por_tipo(t):
+            if t == "HUB":
+                return [0, 0, 255]      # azul
+            elif t == "NODO":
+                return [255, 0, 0]      # rojo
+            else:
+                return [0, 200, 0]      # verde para NAP
+
+        def size_por_tipo(t):
+            if t == "HUB":
+                return 16
+            elif t == "NODO":
+                return 14
+            else:
+                return 12
+
+        df_elem["color"] = df_elem["tipo"].apply(color_por_tipo)
+        df_elem["size"] = df_elem["tipo"].apply(size_por_tipo)
+
+        # Centro del mapa = promedio
+        center_lat = df_elem["lat"].mean()
+        center_lon = df_elem["lon"].mean()
+
+        # -----------------------------
+        # Construir capas de puntos
+        # -----------------------------
+        scatter_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=df_elem,
+            get_position='[lon, lat]',
+            get_color="color",
+            get_radius="size * 5",
+            pickable=True
+        )
+
+        text_layer = pdk.Layer(
+            "TextLayer",
+            data=df_elem,
+            get_position='[lon, lat]',
+            get_text="nombre",
+            get_size=12,
+            get_color=[255, 255, 255],
+            get_text_anchor='"top"',
+            get_alignment_baseline='"bottom"'
+        )
+
+        # -----------------------------
+        # Construir líneas HUB → NODO → NAP
+        # -----------------------------
+        hubs = df_elem[df_elem["tipo"] == "HUB"]
+        nodos = df_elem[df_elem["tipo"] == "NODO"]
+        naps = df_elem[df_elem["tipo"] == "NAP"]
+
+        line_data = []
+
+        # Para simplificar: tomamos el primer HUB y el primer NODO si existen
+        if not hubs.empty and not nodos.empty:
+            hub = hubs.iloc[0]
+            nodo = nodos.iloc[0]
+            line_data.append({
+                "from_lon": hub["lon"],
+                "from_lat": hub["lat"],
+                "to_lon": nodo["lon"],
+                "to_lat": nodo["lat"],
+                "tipo": "HUB → NODO"
+            })
+
+            # NODO → cada NAP
+            for _, nap in naps.iterrows():
+                line_data.append({
+                    "from_lon": nodo["lon"],
+                    "from_lat": nodo["lat"],
+                    "to_lon": nap["lon"],
+                    "to_lat": nap["lat"],
+                    "tipo": "NODO → NAP"
+                })
+
+        df_lineas = pd.DataFrame(line_data)
+
+        line_layer = None
+        if not df_lineas.empty:
+            line_layer = pdk.Layer(
+                "LineLayer",
+                data=df_lineas,
+                get_source_position='[from_lon, from_lat]',
+                get_target_position='[to_lon, to_lat]',
+                get_color=[255, 255, 0],
+                get_width=3
+            )
+
+        # -----------------------------
+        # Render del mapa
+        # -----------------------------
+        layers = [scatter_layer, text_layer]
+        if line_layer is not None:
+            layers.append(line_layer)
+
+        view_state = pdk.ViewState(
+            latitude=center_lat,
+            longitude=center_lon,
+            zoom=14,
+            pitch=0
+        )
+
+        r = pdk.Deck(
+            map_style="mapbox://styles/mapbox/light-v9",
+            initial_view_state=view_state,
+            layers=layers,
+            tooltip={
+                "html": "<b>{tipo}</b><br/>{nombre}<br/>Lat: {lat}<br/>Lon: {lon}",
+                "style": {"color": "white"}
+            }
+        )
+
+        st.pydeck_chart(r, use_container_width=True)
+
+# -----------------------------
+# Tabla de elementos
+# -----------------------------
+st.subheader("3. Resumen de elementos del diseño")
+
+if df_elem.empty:
+    st.info("No hay elementos cargados todavía.")
+else:
+    st.dataframe(
+        df_elem[["tipo", "nombre", "lat", "lon"]],
+        use_container_width=True,
+        hide_index=True
+    )
+
