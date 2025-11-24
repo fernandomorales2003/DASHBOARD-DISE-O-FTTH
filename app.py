@@ -1,17 +1,16 @@
-import folium
-from streamlit_folium import st_folium
-import pydeck as pdk
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import folium
+from streamlit_folium import st_folium
 
 st.set_page_config(
-    page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto Óptico",
+    page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
     layout="wide"
 )
 
 # =========================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES — MÓDULO 1
 # =========================
 
 def calcular_presupuesto(dist_total_km,
@@ -128,31 +127,29 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
 
 
 # =========================
-# UI PRINCIPAL
+# MÓDULO 1 — MAPA LÓGICO + PRESUPUESTO ÓPTICO
 # =========================
 
-st.title("Módulo Ingeniería FTTH — Mapa + Presupuesto Óptico")
+st.title("Módulo Ingeniería FTTH — Mapa + Presupuesto Óptico + Diseño")
 
 st.markdown(
     """
-Este módulo integra en una sola vista:
+### Parte 1 — Mapa lógico + Presupuesto óptico
+
+Esta primera sección integra:
 
 - Un **mapa lógico FTTH** (OLT → NAP → CTO → ONT).
 - El **presupuesto óptico completo** del enlace hasta el cliente.
-
-Ideal para usar en capacitaciones y como MVP para una versión SaaS.
 """
 )
 
 col_izq, col_der = st.columns([1.1, 1])
 
-# =========================
-# COLUMNA IZQUIERDA: MAPA
-# =========================
+# -------- COLUMNA IZQUIERDA: MAPA LÓGICO --------
 with col_izq:
     st.subheader("1. Configuración del enlace y mapa FTTH")
 
-    st.markdown("### Distancias por tramo (km)")
+    st.markdown("#### Distancias por tramo (km)")
     c1, c2, c3 = st.columns(3)
     with c1:
         d_olt_nap = st.number_input("OLT → NAP", min_value=0.0, value=3.0, step=0.1)
@@ -162,7 +159,6 @@ with col_izq:
         d_cto_ont = st.number_input("CTO → ONT", min_value=0.0, value=0.15, step=0.05)
 
     dist_total = d_olt_nap + d_nap_cto + d_cto_ont
-
     st.markdown(f"**Distancia total del enlace:** `{dist_total:.2f} km`")
 
     # Mostrar mapa lógico
@@ -170,35 +166,32 @@ with col_izq:
     st.plotly_chart(fig_mapa, use_container_width=True)
 
     # Tabla resumen de tramos
-    st.markdown("### Resumen de tramos")
+    st.markdown("#### Resumen de tramos")
     df_tramos = pd.DataFrame({
         "Tramo": ["OLT → NAP", "NAP → CTO", "CTO → ONT"],
         "Distancia (km)": [d_olt_nap, d_nap_cto, d_cto_ont]
     })
     st.dataframe(df_tramos, use_container_width=True, hide_index=True)
 
-
-# =========================
-# COLUMNA DERECHA: PRESUPUESTO
-# =========================
+# -------- COLUMNA DERECHA: PRESUPUESTO ÓPTICO --------
 with col_der:
     st.subheader("2. Presupuesto óptico del enlace")
 
-    st.markdown("### Parámetros generales")
+    st.markdown("#### Parámetros generales")
     c1, c2 = st.columns(2)
     with c1:
         pot_olt_dbm = st.number_input("Potencia OLT (dBm)", value=3.0, step=0.5)
     with c2:
         sens_ont_dbm = st.number_input("Sensibilidad mínima ONT (dBm)", value=-27.0, step=0.5)
 
-    st.markdown("### Fibra óptica")
+    st.markdown("#### Fibra óptica")
     c3, c4 = st.columns(2)
     with c3:
         atenuacion_db_km = st.number_input("Atenuación fibra (dB/km)", value=0.21, step=0.01)
     with c4:
-        st.write("")  # relleno
+        st.write("")  # Relleno
 
-    st.markdown("### Empalmes y conectores")
+    st.markdown("#### Empalmes y conectores")
     c5, c6 = st.columns(2)
     with c5:
         n_empalmes = st.number_input("Cantidad de empalmes", min_value=0, value=8, step=1)
@@ -207,8 +200,7 @@ with col_der:
         perd_empalme_db = st.number_input("Pérdida por empalme (dB)", value=0.05, step=0.01)
         perd_conector_db = st.number_input("Pérdida por conector (dB)", value=0.25, step=0.01)
 
-    st.markdown("### Splitters (PON)")
-    # Valores de ejemplo típicos, los podés ajustar luego
+    st.markdown("#### Splitters (PON)")
     opciones_splitter = {
         "Sin splitter": 0.0,
         "1:2 (≈ 3,5 dB)": 3.5,
@@ -229,7 +221,7 @@ with col_der:
     perd_splitter_cto_db = opciones_splitter[splitter_cto]
 
     st.markdown("---")
-    st.markdown("### Resultados del presupuesto óptico")
+    st.markdown("#### Resultados del presupuesto óptico")
 
     resultados = calcular_presupuesto(
         dist_total_km=dist_total,
@@ -257,7 +249,6 @@ with col_der:
             unsafe_allow_html=True
         )
 
-    # Detalle de pérdidas
     st.markdown("#### Detalle de pérdidas")
     df_perdidas = pd.DataFrame({
         "Concepto": [
@@ -279,17 +270,18 @@ with col_der:
 
     st.info(resultados["comentario"])
 
-import pydeck as pdk  # agregalo arriba junto con el resto de imports
-import math
-# =========================================================
-# MÓDULO: DISEÑO FTTH EN MAPA CON FIGURAS (HUB, NODO, NAP, BOTELLA)
-# =========================================================
+
+# =========================
+# MÓDULO 2 — DISEÑO FTTH EN MAPA (FOLIUM)
+# =========================
 
 st.markdown("---")
 st.header("Módulo de Diseño FTTH en Mapa — HUB / NODO / NAP / BOTELLA")
 
 st.markdown(
     """
+### Parte 2 — Diseño visual sobre mapa
+
 En este módulo podés diseñar de forma visual la red FTTH:
 
 1. Elegís el tipo de elemento (**HUB**, **NODO**, **NAP** o **BOTELLA**).
@@ -317,29 +309,27 @@ if "last_click" not in st.session_state:
 
 col_form, col_mapa = st.columns([0.9, 1.1])
 
-# -----------------------------
-# FORMULARIO LADO IZQUIERDO
-# -----------------------------
+# -------- FORMULARIO LADO IZQUIERDO --------
 with col_form:
     st.subheader("1. Definir elemento a colocar")
 
     tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP", "BOTELLA"])
     nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
 
-    st.markdown("### Último punto clickeado en el mapa")
-
+    st.markdown("#### Último punto clickeado en el mapa")
     if st.session_state.last_click is None:
-    st.info("Hacé clic en el mapa para elegir la posición.")
-    lat_click = None
-    lon_click = None
-    else:
-    lat_click = st.session_state.last_click.get("lat")
-    lon_click = st.session_state.last_click.get("lon")
-    if lat_click is not None and lon_click is not None:
-        st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
-    else:
         st.info("Hacé clic en el mapa para elegir la posición.")
-
+        lat_click = None
+        lon_click = None
+    else:
+        lat_click = st.session_state.last_click.get("lat")
+        lon_click = st.session_state.last_click.get("lon")
+        if lat_click is not None and lon_click is not None:
+            st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
+        else:
+            st.info("Hacé clic en el mapa para elegir la posición.")
+            lat_click = None
+            lon_click = None
 
     if st.button("➕ Agregar elemento en la posición clickeada"):
         if nombre.strip() == "":
@@ -362,9 +352,7 @@ with col_form:
         st.warning("Se han eliminado todos los elementos del diseño.")
 
 
-# -----------------------------
-# MAPA LADO DERECHO
-# -----------------------------
+# -------- MAPA LADO DERECHO --------
 with col_mapa:
     st.subheader("2. Mapa interactivo — Hacé clic para ubicar elementos")
 
@@ -403,7 +391,7 @@ with col_mapa:
                 popup=f"HUB: {e_nombre}"
             )
         elif e_tipo == "NODO":
-            # Usamos círculo para diferenciar
+            # Círculo
             marker = folium.CircleMarker(
                 location=[e_lat, e_lon],
                 radius=10,
@@ -477,20 +465,18 @@ with col_mapa:
                     tooltip=f"Fibra NODO → NAP {nap['nombre']}"
                 ).add_to(m)
 
- mapa_data = st_folium(m, width="100%", height=500)
+    # Mostrar mapa y capturar clic
+    mapa_data = st_folium(m, width="100%", height=500)
 
-# Guardar último clic normalizando lon/lng
-if mapa_data and mapa_data.get("last_clicked") is not None:
-    raw_click = mapa_data["last_clicked"]
-    lat = raw_click.get("lat")
-    lon = raw_click.get("lng") or raw_click.get("lon")  # según la versión puede venir como lng
-    if lat is not None and lon is not None:
-        st.session_state.last_click = {"lat": lat, "lon": lon}
+    # Guardar último clic normalizando lon/lng
+    if mapa_data and mapa_data.get("last_clicked") is not None:
+        raw_click = mapa_data["last_clicked"]
+        lat = raw_click.get("lat")
+        lon = raw_click.get("lng") or raw_click.get("lon")
+        if lat is not None and lon is not None:
+            st.session_state.last_click = {"lat": lat, "lon": lon}
 
-
-# -----------------------------
-# TABLA RESUMEN
-# -----------------------------
+# -------- TABLA RESUMEN --------
 st.subheader("3. Resumen de elementos del diseño")
 
 if not st.session_state.ftth_elementos:
@@ -502,5 +488,3 @@ else:
         use_container_width=True,
         hide_index=True
     )
-
-
