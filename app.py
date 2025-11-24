@@ -1,3 +1,4 @@
+from streamlit_folium import st_folium
 import pydeck as pdk
 import streamlit as st
 import pandas as pd
@@ -279,27 +280,30 @@ with col_der:
 
 import pydeck as pdk  # agregalo arriba junto con el resto de imports
 import math
-
 # =========================================================
-# SEGUNDA PARTE: DISEÑO FTTH EN MAPA (HUB, NODO, NAPs)
+# MÓDULO: DISEÑO FTTH EN MAPA CON FIGURAS (HUB, NODO, NAP, BOTELLA)
 # =========================================================
 
 st.markdown("---")
-st.header("Módulo de Diseño FTTH en Mapa (HUB → NODO → NAPs)")
+st.header("Módulo de Diseño FTTH en Mapa — HUB / NODO / NAP / BOTELLA")
 
 st.markdown(
     """
-En este módulo podés **diseñar la red FTTH de forma manual**:
-- Colocar un **HUB**.
-- Definir un **NODO**.
-- Agregar varias **NAPs**.
-- Visualizar el tendido de **fibra entre HUB → NODO → NAPs** sobre un mapa.
+En este módulo podés diseñar de forma visual la red FTTH:
 
-Ideal para mostrar el flujo de diseño durante la capacitación.
+1. Elegís el tipo de elemento (**HUB**, **NODO**, **NAP** o **BOTELLA**).
+2. Le ponés un nombre.
+3. Hacés clic en el mapa para indicar la ubicación.
+4. Lo agregás al diseño y se dibuja con una **forma distinta** según el tipo.
+
+Luego se trazan las líneas de fibra:
+
+- HUB → NODO
+- NODO → NAPs
 """
 )
 
-# Centro por defecto (ej: Mendoza)
+# Centro por defecto (Mendoza)
 DEFAULT_LAT = -32.8894
 DEFAULT_LON = -68.8458
 
@@ -307,191 +311,186 @@ DEFAULT_LON = -68.8458
 if "ftth_elementos" not in st.session_state:
     st.session_state.ftth_elementos = []  # lista de dicts {tipo, nombre, lat, lon}
 
+if "last_click" not in st.session_state:
+    st.session_state.last_click = None
 
-# -----------------------------
-# Formularios de alta de nodos
-# -----------------------------
 col_form, col_mapa = st.columns([0.9, 1.1])
 
+# -----------------------------
+# FORMULARIO LADO IZQUIERDO
+# -----------------------------
 with col_form:
-    st.subheader("1. Agregar elementos de la red")
+    st.subheader("1. Definir elemento a colocar")
 
-    tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP"])
+    tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP", "BOTELLA"])
     nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
 
-    c_lat, c_lon = st.columns(2)
-    with c_lat:
-        lat = st.number_input(
-            "Latitud",
-            value=DEFAULT_LAT,
-            format="%.6f"
-        )
-    with c_lon:
-        lon = st.number_input(
-            "Longitud",
-            value=DEFAULT_LON,
-            format="%.6f"
-        )
+    st.markdown("### Último punto clickeado en el mapa")
+    if st.session_state.last_click is None:
+        st.info("Hacé clic en el mapa para elegir la posición.")
+        lat_click = None
+        lon_click = None
+    else:
+        lat_click = st.session_state.last_click["lat"]
+        lon_click = st.session_state.last_click["lon"]
+        st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
 
-    if st.button("➕ Agregar al diseño"):
+    if st.button("➕ Agregar elemento en la posición clickeada"):
         if nombre.strip() == "":
             st.warning("Por favor ingresá un nombre para el elemento.")
+        elif lat_click is None or lon_click is None:
+            st.warning("Primero hacé clic en el mapa para elegir la posición.")
         else:
             st.session_state.ftth_elementos.append(
                 {
                     "tipo": tipo,
                     "nombre": nombre.strip(),
-                    "lat": lat,
-                    "lon": lon
+                    "lat": lat_click,
+                    "lon": lon_click
                 }
             )
             st.success(f"{tipo} '{nombre}' agregado al diseño.")
 
-    # Opción para limpiar todo
     if st.button("🗑️ Limpiar diseño completo"):
         st.session_state.ftth_elementos = []
         st.warning("Se han eliminado todos los elementos del diseño.")
 
 
 # -----------------------------
-# Construcción de DataFrames
+# MAPA LADO DERECHO
 # -----------------------------
-df_elem = pd.DataFrame(st.session_state.ftth_elementos)
-
 with col_mapa:
-    st.subheader("2. Visualización en mapa")
+    st.subheader("2. Mapa interactivo — Hacé clic para ubicar elementos")
 
-    if df_elem.empty:
-        st.info("Todavía no hay elementos cargados. Agregá un HUB, NODO o NAP para comenzar.")
-    else:
-        # Asignar color y tamaño según tipo
-        def color_por_tipo(t):
-            if t == "HUB":
-                return [0, 0, 255]      # azul
-            elif t == "NODO":
-                return [255, 0, 0]      # rojo
-            else:
-                return [0, 200, 0]      # verde para NAP
+    # Crear mapa base
+    center_lat = DEFAULT_LAT
+    center_lon = DEFAULT_LON
 
-        def size_por_tipo(t):
-            if t == "HUB":
-                return 16
-            elif t == "NODO":
-                return 14
-            else:
-                return 12
+    # Si ya hay elementos, centramos en el promedio
+    if st.session_state.ftth_elementos:
+        df_tmp = pd.DataFrame(st.session_state.ftth_elementos)
+        center_lat = df_tmp["lat"].mean()
+        center_lon = df_tmp["lon"].mean()
 
-        df_elem["color"] = df_elem["tipo"].apply(color_por_tipo)
-        df_elem["size"] = df_elem["tipo"].apply(size_por_tipo)
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="OpenStreetMap")
 
-        # Centro del mapa = promedio
-        center_lat = df_elem["lat"].mean()
-        center_lon = df_elem["lon"].mean()
+    # Agregar elementos existentes con distintas formas
+    for elem in st.session_state.ftth_elementos:
+        e_lat = elem["lat"]
+        e_lon = elem["lon"]
+        e_tipo = elem["tipo"]
+        e_nombre = elem["nombre"]
 
-        # -----------------------------
-        # Construir capas de puntos
-        # -----------------------------
-        scatter_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=df_elem,
-            get_position='[lon, lat]',
-            get_color="color",
-            get_radius="size * 5",
-            pickable=True
-        )
+        # Definimos forma y color según tipo
+        if e_tipo == "HUB":
+            # ROMBO (cuadrado girado 45°)
+            marker = folium.RegularPolygonMarker(
+                location=[e_lat, e_lon],
+                number_of_sides=4,
+                radius=12,
+                rotation=45,
+                color="blue",
+                weight=2,
+                fill=True,
+                fill_color="blue",
+                fill_opacity=0.7,
+                popup=f"HUB: {e_nombre}"
+            )
+        elif e_tipo == "NODO":
+            # Usamos círculo para diferenciar
+            marker = folium.CircleMarker(
+                location=[e_lat, e_lon],
+                radius=10,
+                color="red",
+                fill=True,
+                fill_color="red",
+                fill_opacity=0.7,
+                popup=f"NODO: {e_nombre}"
+            )
+        elif e_tipo == "NAP":
+            # TRIÁNGULO
+            marker = folium.RegularPolygonMarker(
+                location=[e_lat, e_lon],
+                number_of_sides=3,
+                radius=10,
+                rotation=0,
+                color="green",
+                weight=2,
+                fill=True,
+                fill_color="green",
+                fill_opacity=0.7,
+                popup=f"NAP: {e_nombre}"
+            )
+        else:
+            # BOTELLA → RECTÁNGULO / CUADRADO
+            marker = folium.RegularPolygonMarker(
+                location=[e_lat, e_lon],
+                number_of_sides=4,
+                radius=10,
+                rotation=0,
+                color="purple",
+                weight=2,
+                fill=True,
+                fill_color="purple",
+                fill_opacity=0.7,
+                popup=f"BOTELLA: {e_nombre}"
+            )
 
-        text_layer = pdk.Layer(
-            "TextLayer",
-            data=df_elem,
-            get_position='[lon, lat]',
-            get_text="nombre",
-            get_size=12,
-            get_color=[255, 255, 255],
-            get_text_anchor='"top"',
-            get_alignment_baseline='"bottom"'
-        )
+        marker.add_to(m)
 
-        # -----------------------------
-        # Construir líneas HUB → NODO → NAP
-        # -----------------------------
+    # Trazar líneas de fibra: HUB → NODO → NAPs
+    df_elem = pd.DataFrame(st.session_state.ftth_elementos)
+    if not df_elem.empty:
         hubs = df_elem[df_elem["tipo"] == "HUB"]
         nodos = df_elem[df_elem["tipo"] == "NODO"]
         naps = df_elem[df_elem["tipo"] == "NAP"]
 
-        line_data = []
-
-        # Para simplificar: tomamos el primer HUB y el primer NODO si existen
         if not hubs.empty and not nodos.empty:
             hub = hubs.iloc[0]
             nodo = nodos.iloc[0]
-            line_data.append({
-                "from_lon": hub["lon"],
-                "from_lat": hub["lat"],
-                "to_lon": nodo["lon"],
-                "to_lat": nodo["lat"],
-                "tipo": "HUB → NODO"
-            })
+            # Línea HUB → NODO
+            folium.PolyLine(
+                locations=[
+                    [hub["lat"], hub["lon"]],
+                    [nodo["lat"], nodo["lon"]]
+                ],
+                color="yellow",
+                weight=3,
+                tooltip="Fibra HUB → NODO"
+            ).add_to(m)
 
-            # NODO → cada NAP
+            # Líneas NODO → NAPs
             for _, nap in naps.iterrows():
-                line_data.append({
-                    "from_lon": nodo["lon"],
-                    "from_lat": nodo["lat"],
-                    "to_lon": nap["lon"],
-                    "to_lat": nap["lat"],
-                    "tipo": "NODO → NAP"
-                })
+                folium.PolyLine(
+                    locations=[
+                        [nodo["lat"], nodo["lon"]],
+                        [nap["lat"], nap["lon"]]
+                    ],
+                    color="orange",
+                    weight=2,
+                    tooltip=f"Fibra NODO → NAP {nap['nombre']}"
+                ).add_to(m)
 
-        df_lineas = pd.DataFrame(line_data)
+    # Mostrar mapa y capturar clic
+    mapa_data = st_folium(m, width="100%", height=500)
 
-        line_layer = None
-        if not df_lineas.empty:
-            line_layer = pdk.Layer(
-                "LineLayer",
-                data=df_lineas,
-                get_source_position='[from_lon, from_lat]',
-                get_target_position='[to_lon, to_lat]',
-                get_color=[255, 255, 0],
-                get_width=3
-            )
-
-        # -----------------------------
-        # Render del mapa
-        # -----------------------------
-        layers = [scatter_layer, text_layer]
-        if line_layer is not None:
-            layers.append(line_layer)
-
-        view_state = pdk.ViewState(
-            latitude=center_lat,
-            longitude=center_lon,
-            zoom=14,
-            pitch=0
-        )
-
-        r = pdk.Deck(
-            map_style="mapbox://styles/mapbox/light-v9",
-            initial_view_state=view_state,
-            layers=layers,
-            tooltip={
-                "html": "<b>{tipo}</b><br/>{nombre}<br/>Lat: {lat}<br/>Lon: {lon}",
-                "style": {"color": "white"}
-            }
-        )
-
-        st.pydeck_chart(r, use_container_width=True)
+    # Guardar último clic
+    if mapa_data and mapa_data.get("last_clicked") is not None:
+        st.session_state.last_click = mapa_data["last_clicked"]
 
 # -----------------------------
-# Tabla de elementos
+# TABLA RESUMEN
 # -----------------------------
 st.subheader("3. Resumen de elementos del diseño")
 
-if df_elem.empty:
-    st.info("No hay elementos cargados todavía.")
+if not st.session_state.ftth_elementos:
+    st.info("No hay elementos cargados todavía. Usá el mapa para empezar a diseñar.")
 else:
+    df_resumen = pd.DataFrame(st.session_state.ftth_elementos)
     st.dataframe(
-        df_elem[["tipo", "nombre", "lat", "lon"]],
+        df_resumen[["tipo", "nombre", "lat", "lon"]],
         use_container_width=True,
         hide_index=True
     )
+
 
