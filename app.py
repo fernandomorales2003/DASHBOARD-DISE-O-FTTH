@@ -366,7 +366,11 @@ with col_mapa:
         center_lat = df_tmp["lat"].mean()
         center_lon = df_tmp["lon"].mean()
 
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="OpenStreetMap")
+m = folium.Map(
+    location=[center_lat, center_lon],
+    zoom_start=13,
+    tiles="CartoDB dark_matter"  # mapa oscuro tipo night mode
+)
 
     # Agregar elementos existentes con distintas formas
     for elem in st.session_state.ftth_elementos:
