@@ -206,8 +206,51 @@ def parsear_kmz_ftth(file_obj):
         # Procesar todos los Placemark dentro de esta carpeta
         for pm in folder_elem.findall("k:Placemark", ns):
             pm_name = get_text(pm.find("k:name", ns))
-            pm_path = f"{new_path}/{pm_name}" if new_path
+            # 🔧 AQUÍ ESTABA EL ERROR: faltaba el "else pm_name"
+            pm_path = f"{new_path}/{pm_name}" if new_path else pm_name
+            p = pm_path.upper()
 
+            # Punto
+            point = pm.find(".//k:Point", ns)
+            if point is not None:
+                coords_elem = point.find("k:coordinates", ns)
+                coords_list = parse_coordinates(get_text(coords_elem))
+                if coords_list:
+                    lat, lon = coords_list[0]
+                    punto = {"name": pm_name, "lat": lat, "lon": lon}
+
+                    # Primero casos específicos (CAJAS), luego NODO
+                    if "CAJAS NAP" in p:
+                        data["cajas_nap"].append(punto)
+                    elif "CAJAS HUB" in p:
+                        data["cajas_hub"].append(punto)
+                    elif "/NODO" in p or p.startswith("NODO") or " NODO" in p:
+                        data["nodo"].append(punto)
+                    else:
+                        # Fallback: lo contamos como nodo genérico
+                        data["nodo"].append(punto)
+                continue  # si era punto, no miramos línea
+
+            # Línea (LineString)
+            line = pm.find(".//k:LineString", ns)
+            if line is not None:
+                coords_elem = line.find("k:coordinates", ns)
+                coords_list = parse_coordinates(get_text(coords_elem))
+                if coords_list:
+                    if "CABLES TRONCALES" in p:
+                        data["cables_troncales"].append(coords_list)
+                    elif "CABLES DERIVACIONES" in p:
+                        data["cables_derivaciones"].append(coords_list)
+
+        # Recorrer carpetas hijas
+        for subfolder in folder_elem.findall("k:Folder", ns):
+            walk_folder(subfolder, new_path)
+
+    # 3) Iniciar recorrido desde Document
+    for folder in document.findall("k:Folder", ns):
+        walk_folder(folder, "")
+
+    return data
 
 
 # =========================
