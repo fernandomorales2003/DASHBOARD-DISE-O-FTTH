@@ -516,8 +516,8 @@ with col_mapa:
         ).add_to(m)
 
     # Render del mapa y captura de datos
-    mapa_data = st_folium(m, width="100%", height=500)
-
+    mapa_data = st_folium(m, width="100%", height=500, key="mapa_ftth")
+    
     # Actualizar vista (centro y zoom) para evitar zoom-out al recargar
     if mapa_data:
         center = mapa_data.get("center")
