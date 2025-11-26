@@ -138,10 +138,10 @@ def parsear_kmz_ftth(file_obj):
 
     FTTH-DISEÑO/
       NODO
-      CABLES_TRONCALES
-      CABLES_DERIVACIONES
-      CAJAS_HUB
-      CAJAS_NAP
+      CABLES TRONCALES
+      CABLES DERIVACIONES
+      CAJAS HUB
+      CAJAS NAP
     """
     data = {
         "nodo": [],
@@ -165,11 +165,9 @@ def parsear_kmz_ftth(file_obj):
         kml_bytes = zf.read(kml_name)
 
     # 2) Parsear XML del KML
-    # El namespace por defecto en KML 2.2:
     ns = {"k": "http://www.opengis.net/kml/2.2"}
     root = ET.fromstring(kml_bytes)
 
-    # Intentar encontrar Document; si no, usamos root directo
     document = root.find("k:Document", ns)
     if document is None:
         document = root
@@ -199,7 +197,7 @@ def parsear_kmz_ftth(file_obj):
     def walk_folder(folder_elem, path=""):
         """
         Recorre recursivamente carpetas (<Folder>) y procesa <Placemark>.
-        path acumula los nombres de carpeta para clasificar: NODO, CAJAS_HUB, etc.
+        path acumula los nombres de carpeta para clasificar: NODO, CAJAS HUB, etc.
         """
         name_elem = folder_elem.find("k:name", ns)
         folder_name = get_text(name_elem)
@@ -208,46 +206,8 @@ def parsear_kmz_ftth(file_obj):
         # Procesar todos los Placemark dentro de esta carpeta
         for pm in folder_elem.findall("k:Placemark", ns):
             pm_name = get_text(pm.find("k:name", ns))
-            pm_path = f"{new_path}/{pm_name}" if new_path else pm_name
-            path_upper = pm_path.upper()
+            pm_path = f"{new_path}/{pm_name}" if new_path
 
-            # Punto
-            point = pm.find(".//k:Point", ns)
-            if point is not None:
-                coords_elem = point.find("k:coordinates", ns)
-                coords_list = parse_coordinates(get_text(coords_elem))
-                if coords_list:
-                    lat, lon = coords_list[0]
-                    punto = {"name": pm_name, "lat": lat, "lon": lon}
-                    if "NODO" in path_upper:
-                        data["nodo"].append(punto)
-                    elif "CAJAS_HUB" in path_upper:
-                        data["cajas_hub"].append(punto)
-                    elif "CAJAS_NAP" in path_upper:
-                        data["cajas_nap"].append(punto)
-                    continue  # si ya fue punto, no seguimos con línea
-
-            # Línea (LineString)
-            line = pm.find(".//k:LineString", ns)
-            if line is not None:
-                coords_elem = line.find("k:coordinates", ns)
-                coords_list = parse_coordinates(get_text(coords_elem))
-                if coords_list:
-                    if "CABLES_TRONCALES" in path_upper:
-                        data["cables_troncales"].append(coords_list)
-                    elif "CABLES_DERIVACIONES" in path_upper:
-                        data["cables_derivaciones"].append(coords_list)
-
-        # Recorrer carpetas hijas
-        for subfolder in folder_elem.findall("k:Folder", ns):
-            walk_folder(subfolder, new_path)
-
-    # 3) Iniciar recorrido desde Document
-    # Puede haber varias carpetas raíz
-    for folder in document.findall("k:Folder", ns):
-        walk_folder(folder, "")
-
-    return data
 
 
 # =========================
