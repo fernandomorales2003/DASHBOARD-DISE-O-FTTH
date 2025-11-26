@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import folium
+import requests
+
 from streamlit_folium import st_folium
 from branca.element import Element
 
@@ -270,6 +272,30 @@ with col_der:
     st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
 
     st.info(resultados["comentario"])
+def obtener_ruta_osrm(lat1, lon1, lat2, lon2):
+    """
+    Pide a OSRM una ruta por calles entre dos puntos.
+    Devuelve una lista de [lat, lon] que se puede usar en folium.PolyLine.
+    Si falla, devuelve la línea recta entre los dos puntos.
+    """
+    try:
+        url = (
+            f"https://router.project-osrm.org/route/v1/driving/"
+            f"{lon1},{lat1};{lon2},{lat2}"
+        )
+        params = {"overview": "full", "geometries": "geojson"}
+        r = requests.get(url, params=params, timeout=5)
+        r.raise_for_status()
+        data = r.json()
+
+        coords = data["routes"][0]["geometry"]["coordinates"]  # [ [lon,lat], ... ]
+        # Convertimos a [lat, lon] que es lo que usa Folium
+        ruta = [[lat, lon] for lon, lat in coords]
+        return ruta
+
+    except Exception:
+        # Fallback: línea recta
+        return [[lat1, lon1], [lat2, lon2]]
 
 
 # =========================
@@ -351,6 +377,7 @@ with col_form:
     if st.button("🗑️ Limpiar diseño completo"):
         st.session_state.ftth_elementos = []
         st.warning("Se han eliminado todos los elementos del diseño.")
+
 # -------- MAPA LADO DERECHO --------
 with col_mapa:
     st.subheader("2. Mapa interactivo — Hacé clic para ubicar elementos")
@@ -383,7 +410,6 @@ with col_mapa:
     }
     </style>
     """
-    from branca.element import Element
     m.get_root().header.add_child(Element(css))
 
     # Agregar elementos existentes con distintas formas
@@ -450,7 +476,7 @@ with col_mapa:
 
         marker.add_to(m)
 
-    # Trazar líneas de fibra: HUB → NODO → NAPs
+    # Trazar líneas de fibra: HUB → NODO → NAPs siguiendo calles
     df_elem = pd.DataFrame(st.session_state.ftth_elementos)
     if not df_elem.empty:
         hubs = df_elem[df_elem["tipo"] == "HUB"]
@@ -461,26 +487,28 @@ with col_mapa:
             hub = hubs.iloc[0]
             nodo = nodos.iloc[0]
 
-            # Línea HUB → NODO
+            # Ruta HUB → NODO por calles
+            ruta_hub_nodo = obtener_ruta_osrm(
+                hub["lat"], hub["lon"],
+                nodo["lat"], nodo["lon"]
+            )
             folium.PolyLine(
-                locations=[
-                    [hub["lat"], hub["lon"]],
-                    [nodo["lat"], nodo["lon"]]
-                ],
-                color="yellow",
-                weight=3,
+                locations=ruta_hub_nodo,
+                color="deepskyblue",
+                weight=4,
                 tooltip="Fibra HUB → NODO"
             ).add_to(m)
 
-            # Líneas NODO → NAPs
+            # Rutas NODO → NAPs por calles
             for _, nap in naps.iterrows():
+                ruta_nodo_nap = obtener_ruta_osrm(
+                    nodo["lat"], nodo["lon"],
+                    nap["lat"], nap["lon"]
+                )
                 folium.PolyLine(
-                    locations=[
-                        [nodo["lat"], nodo["lon"]],
-                        [nap["lat"], nap["lon"]]
-                    ],
-                    color="orange",
-                    weight=2,
+                    locations=ruta_nodo_nap,
+                    color="deepskyblue",
+                    weight=3,
                     tooltip=f"Fibra NODO → NAP {nap['nombre']}"
                 ).add_to(m)
 
@@ -494,6 +522,7 @@ with col_mapa:
         lon = raw_click.get("lng") or raw_click.get("lon")
         if lat is not None and lon is not None:
             st.session_state.last_click = {"lat": lat, "lon": lon}
+
 
 
 # -------- TABLA RESUMEN --------
