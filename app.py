@@ -6,6 +6,7 @@ from streamlit_folium import st_folium
 from branca.element import Element
 import zipfile
 import xml.etree.ElementTree as ET
+import math
 
 st.set_page_config(
     page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
@@ -92,6 +93,7 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         line=dict(width=3)
     ))
 
+    # Anotaciones de distancia
     fig.add_annotation(
         x=(x_olt + x_nap) / 2,
         y=-0.05,
@@ -127,6 +129,57 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
 
 
 # =========================
+# FUNCIONES GEO — DISTANCIAS
+# =========================
+
+def distancia_haversine_km(lat1, lon1, lat2, lon2):
+    """
+    Distancia en km entre dos puntos (lat/lon) usando Haversine.
+    """
+    R = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+def longitud_total_km(coords):
+    """
+    Longitud total (km) de una polilínea dada por lista de [lat, lon].
+    """
+    if len(coords) < 2:
+        return 0.0
+    total = 0.0
+    for i in range(len(coords) - 1):
+        lat1, lon1 = coords[i]
+        lat2, lon2 = coords[i + 1]
+        total += distancia_haversine_km(lat1, lon1, lat2, lon2)
+    return total
+
+
+def nap_mas_cercana(lat, lon, cajas_nap):
+    """
+    Devuelve (NAP_más_cercana, distancia_km) dado un punto y la lista de cajas NAP.
+    Si no hay NAP, devuelve (None, None).
+    """
+    if not cajas_nap:
+        return None, None
+
+    min_dist = None
+    mejor = None
+    for nap in cajas_nap:
+        d = distancia_haversine_km(lat, lon, nap["lat"], nap["lon"])
+        if (min_dist is None) or (d < min_dist):
+            min_dist = d
+            mejor = nap
+    return mejor, min_dist
+
+
+# =========================
 # FUNCIONES AUXILIARES — MÓDULO 2 (KMZ vía XML)
 # =========================
 
@@ -148,7 +201,7 @@ def parsear_kmz_ftth(file_obj):
         "nodo": [],
         "cables_troncales": [],
         "cables_derivaciones": [],
-        "cables_preconect": [],   # nueva capa
+        "cables_preconect": [],   # lista de dicts {name, coords}
         "cajas_hub": [],
         "cajas_nap": []
     }
@@ -211,7 +264,7 @@ def parsear_kmz_ftth(file_obj):
             pm_path = f"{new_path}/{pm_name}" if new_path else pm_name
             p = pm_path.upper()
 
-            # Punto
+            # ----- PUNTO -----
             point = pm.find(".//k:Point", ns)
             if point is not None:
                 coords_elem = point.find("k:coordinates", ns)
@@ -220,7 +273,6 @@ def parsear_kmz_ftth(file_obj):
                     lat, lon = coords_list[0]
                     punto = {"name": pm_name, "lat": lat, "lon": lon}
 
-                    # Primero casos específicos (CAJAS), luego NODO
                     if "CAJAS NAP" in p:
                         data["cajas_nap"].append(punto)
                     elif "CAJAS HUB" in p:
@@ -228,11 +280,11 @@ def parsear_kmz_ftth(file_obj):
                     elif "/NODO" in p or p.startswith("NODO") or " NODO" in p:
                         data["nodo"].append(punto)
                     else:
-                        # Fallback: lo contamos como nodo genérico
+                        # fallback: nodo genérico
                         data["nodo"].append(punto)
                 continue  # si era punto, no miramos línea
 
-            # Línea (LineString)
+            # ----- LÍNEA (LineString) -----
             line = pm.find(".//k:LineString", ns)
             if line is not None:
                 coords_elem = line.find("k:coordinates", ns)
@@ -243,7 +295,11 @@ def parsear_kmz_ftth(file_obj):
                     elif "CABLES DERIVACIONES" in p:
                         data["cables_derivaciones"].append(coords_list)
                     elif "CABLES PRECONECTORIZADOS" in p:
-                        data["cables_preconect"].append(coords_list)
+                        # guardamos nombre + coords para poder calcular distancia y NAP
+                        data["cables_preconect"].append({
+                            "name": pm_name,
+                            "coords": coords_list
+                        })
 
         # Recorrer carpetas hijas
         for subfolder in folder_elem.findall("k:Folder", ns):
@@ -466,8 +522,13 @@ with col_mapa:
             latitudes.append(p["lat"])
             longitudes.append(p["lon"])
 
-        for linea in data["cables_troncales"] + data["cables_derivaciones"] + data["cables_preconect"]:
+        for linea in data["cables_troncales"] + data["cables_derivaciones"]:
             for lat, lon in linea:
+                latitudes.append(lat)
+                longitudes.append(lon)
+
+        for cable in data["cables_preconect"]:
+            for lat, lon in cable["coords"]:
                 latitudes.append(lat)
                 longitudes.append(lon)
 
@@ -530,9 +591,9 @@ with col_mapa:
             ).add_to(m)
 
         # --- CABLES PRECONECTORIZADOS (líneas finas punteadas) ---
-        for linea in data["cables_preconect"]:
+        for cable in data["cables_preconect"]:
             folium.PolyLine(
-                locations=linea,
+                locations=cable["coords"],
                 color="#ff66ff",      # violeta/rosa
                 weight=2,
                 opacity=0.9,
@@ -605,3 +666,34 @@ else:
             st.dataframe(df_nap, use_container_width=True, hide_index=True)
         else:
             st.write("Sin cajas NAP.")
+
+    # -------- TABLA DE CABLES PRECONECTORIZADOS --------
+    st.markdown("### Cables preconectorizados (detalle)")
+
+    if not data["cables_preconect"]:
+        st.info("No se encontraron CABLES PRECONECTORIZADOS en el KMZ.")
+    else:
+        filas = []
+        for cable in data["cables_preconect"]:
+            nombre_cable = cable["name"]
+            coords = cable["coords"]
+            long_km = longitud_total_km(coords)
+            long_m = long_km * 1000.0
+
+            # Tomamos el último punto como extremo hacia NAP
+            lat_fin, lon_fin = coords[-1]
+            nap_dest, dist_km = nap_mas_cercana(lat_fin, lon_fin, data["cajas_nap"])
+
+            if nap_dest is not None:
+                nombre_nap = nap_dest["name"]
+            else:
+                nombre_nap = "Sin NAP cercana"
+
+            filas.append({
+                "Cable": nombre_cable,
+                "NAP destino": nombre_nap,
+                "Longitud (m)": round(long_m, 1)
+            })
+
+        df_precon = pd.DataFrame(filas)
+        st.dataframe(df_precon, use_container_width=True, hide_index=True)
