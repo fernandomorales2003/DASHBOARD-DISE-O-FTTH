@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import folium
 import requests
-
+import folium
 from streamlit_folium import st_folium
 from branca.element import Element
+
 
 st.set_page_config(
     page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
@@ -297,29 +297,25 @@ def obtener_ruta_osrm(lat1, lon1, lat2, lon2):
         # Fallback: línea recta
         return [[lat1, lon1], [lat2, lon2]]
 
+if "traza_actual" not in st.session_state:
+    st.session_state.traza_actual = []   # lista de puntos de la traza que se está dibujando
+
+if "trazas" not in st.session_state:
+    st.session_state.trazas = []         # lista de trazas guardadas (cada una es lista de puntos)
 
 # =========================
-# MÓDULO 2 — DISEÑO FTTH EN MAPA (FOLIUM)
+# MÓDULO 2 — DISEÑO FTTH EN MAPA (MANUAL)
 # =========================
 
 st.markdown("---")
-st.header("Módulo de Diseño FTTH en Mapa — HUB / NODO / NAP / BOTELLA")
+st.header("Módulo de Diseño FTTH en Mapa — HUB / NODO / NAP / BOTELLA + Trazas manuales")
 
 st.markdown(
     """
-### Parte 2 — Diseño visual sobre mapa
-
 En este módulo podés diseñar de forma visual la red FTTH:
 
-1. Elegís el tipo de elemento (**HUB**, **NODO**, **NAP** o **BOTELLA**).
-2. Le ponés un nombre.
-3. Hacés clic en el mapa para indicar la ubicación.
-4. Lo agregás al diseño y se dibuja con una **forma distinta** según el tipo.
-
-Luego se trazan las líneas de fibra:
-
-- HUB → NODO
-- NODO → NAPs
+- **Modo Colocar elementos**: HUB, NODO, NAP o BOTELLA, haciendo clic en el mapa.
+- **Modo Dibujar traza de fibra**: vas clickeando por las calles para armar la traza manualmente.
 """
 )
 
@@ -334,53 +330,104 @@ if "ftth_elementos" not in st.session_state:
 if "last_click" not in st.session_state:
     st.session_state.last_click = None
 
+if "traza_actual" not in st.session_state:
+    st.session_state.traza_actual = []   # lista de dicts {lat, lon}
+
+if "trazas" not in st.session_state:
+    st.session_state.trazas = []         # lista de listas de dicts
+
 col_form, col_mapa = st.columns([0.9, 1.1])
 
 # -------- FORMULARIO LADO IZQUIERDO --------
 with col_form:
-    st.subheader("1. Definir elemento a colocar")
+    st.subheader("1. Modo de interacción")
 
-    tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP", "BOTELLA"])
-    nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
+    modo = st.radio(
+        "¿Qué querés hacer?",
+        ["Colocar elementos", "Dibujar traza de fibra"]
+    )
 
-    st.markdown("#### Último punto clickeado en el mapa")
-    if st.session_state.last_click is None:
-        st.info("Hacé clic en el mapa para elegir la posición.")
-        lat_click = None
-        lon_click = None
-    else:
-        lat_click = st.session_state.last_click.get("lat")
-        lon_click = st.session_state.last_click.get("lon")
-        if lat_click is not None and lon_click is not None:
-            st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
-        else:
+    # =======================
+    # MODO: COLOCAR ELEMENTOS
+    # =======================
+    if modo == "Colocar elementos":
+        st.markdown("### Colocar HUB / NODO / NAP / BOTELLA")
+
+        tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP", "BOTELLA"])
+        nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
+
+        st.markdown("#### Último punto clickeado en el mapa")
+        if st.session_state.last_click is None:
             st.info("Hacé clic en el mapa para elegir la posición.")
             lat_click = None
             lon_click = None
-
-    if st.button("➕ Agregar elemento en la posición clickeada"):
-        if nombre.strip() == "":
-            st.warning("Por favor ingresá un nombre para el elemento.")
-        elif lat_click is None or lon_click is None:
-            st.warning("Primero hacé clic en el mapa para elegir la posición.")
         else:
-            st.session_state.ftth_elementos.append(
-                {
-                    "tipo": tipo,
-                    "nombre": nombre.strip(),
-                    "lat": lat_click,
-                    "lon": lon_click
-                }
-            )
-            st.success(f"{tipo} '{nombre}' agregado al diseño.")
+            lat_click = st.session_state.last_click.get("lat")
+            lon_click = st.session_state.last_click.get("lon")
+            if lat_click is not None and lon_click is not None:
+                st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
+            else:
+                st.info("Hacé clic en el mapa para elegir la posición.")
+                lat_click = None
+                lon_click = None
 
-    if st.button("🗑️ Limpiar diseño completo"):
-        st.session_state.ftth_elementos = []
-        st.warning("Se han eliminado todos los elementos del diseño.")
+        if st.button("➕ Agregar elemento en la posición clickeada"):
+            if nombre.strip() == "":
+                st.warning("Por favor ingresá un nombre para el elemento.")
+            elif lat_click is None or lon_click is None:
+                st.warning("Primero hacé clic en el mapa para elegir la posición.")
+            else:
+                st.session_state.ftth_elementos.append(
+                    {
+                        "tipo": tipo,
+                        "nombre": nombre.strip(),
+                        "lat": lat_click,
+                        "lon": lon_click
+                    }
+                )
+                st.success(f"{tipo} '{nombre}' agregado al diseño.")
+
+        if st.button("🗑️ Limpiar elementos (HUB/NODO/NAP/BOTELLA)"):
+            st.session_state.ftth_elementos = []
+            st.warning("Se han eliminado todos los elementos del diseño.")
+
+    # =======================
+    # MODO: DIBUJAR TRAZA
+    # =======================
+    else:
+        st.markdown("### Dibujar traza de fibra (manual)")
+        st.info(
+            "Hacé clic en el mapa para ir agregando puntos a la traza.\n\n"
+            "Cuando termines:\n"
+            "- Usá **Guardar traza** para fijarla.\n"
+            "- Usá **Deshacer último punto** si te equivocaste.\n"
+            "- Podés dibujar varias trazas."
+        )
+
+        st.markdown(f"Puntos en la traza actual: **{len(st.session_state.traza_actual)}**")
+
+        c_btn1, c_btn2, c_btn3 = st.columns(3)
+        with c_btn1:
+            if st.button("✅ Guardar traza actual"):
+                if len(st.session_state.traza_actual) < 2:
+                    st.warning("La traza necesita al menos 2 puntos.")
+                else:
+                    st.session_state.trazas.append(st.session_state.traza_actual.copy())
+                    st.session_state.traza_actual = []
+                    st.success("Traza guardada.")
+        with c_btn2:
+            if st.button("↩️ Deshacer último punto"):
+                if st.session_state.traza_actual:
+                    st.session_state.traza_actual.pop()
+        with c_btn3:
+            if st.button("🗑️ Borrar todas las trazas"):
+                st.session_state.trazas = []
+                st.session_state.traza_actual = []
+                st.warning("Se eliminaron todas las trazas.")
 
 # -------- MAPA LADO DERECHO --------
 with col_mapa:
-    st.subheader("2. Mapa interactivo — Hacé clic para ubicar elementos")
+    st.subheader("2. Mapa interactivo — Clic para ubicar elementos o trazar fibra")
 
     # Crear mapa base
     center_lat = DEFAULT_LAT
@@ -392,7 +439,6 @@ with col_mapa:
         center_lat = df_tmp["lat"].mean()
         center_lon = df_tmp["lon"].mean()
 
-    # Mapa oscuro
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=13,
@@ -419,9 +465,7 @@ with col_mapa:
         e_tipo = elem["tipo"]
         e_nombre = elem["nombre"]
 
-        # Definimos forma y color según tipo
         if e_tipo == "HUB":
-            # ROMBO (cuadrado girado 45°)
             marker = folium.RegularPolygonMarker(
                 location=[e_lat, e_lon],
                 number_of_sides=4,
@@ -435,7 +479,6 @@ with col_mapa:
                 popup=f"HUB: {e_nombre}"
             )
         elif e_tipo == "NODO":
-            # Círculo
             marker = folium.CircleMarker(
                 location=[e_lat, e_lon],
                 radius=10,
@@ -446,7 +489,6 @@ with col_mapa:
                 popup=f"NODO: {e_nombre}"
             )
         elif e_tipo == "NAP":
-            # TRIÁNGULO
             marker = folium.RegularPolygonMarker(
                 location=[e_lat, e_lon],
                 number_of_sides=3,
@@ -460,7 +502,6 @@ with col_mapa:
                 popup=f"NAP: {e_nombre}"
             )
         else:
-            # BOTELLA → RECTÁNGULO / CUADRADO
             marker = folium.RegularPolygonMarker(
                 location=[e_lat, e_lon],
                 number_of_sides=4,
@@ -476,53 +517,52 @@ with col_mapa:
 
         marker.add_to(m)
 
-    # Trazar líneas de fibra: HUB → NODO → NAPs siguiendo calles
-    df_elem = pd.DataFrame(st.session_state.ftth_elementos)
-    if not df_elem.empty:
-        hubs = df_elem[df_elem["tipo"] == "HUB"]
-        nodos = df_elem[df_elem["tipo"] == "NODO"]
-        naps = df_elem[df_elem["tipo"] == "NAP"]
-
-        if not hubs.empty and not nodos.empty:
-            hub = hubs.iloc[0]
-            nodo = nodos.iloc[0]
-
-            # Ruta HUB → NODO por calles
-            ruta_hub_nodo = obtener_ruta_osrm(
-                hub["lat"], hub["lon"],
-                nodo["lat"], nodo["lon"]
-            )
+    # Dibujar trazas guardadas
+    for traza in st.session_state.trazas:
+        if len(traza) >= 2:
+            coords = [[p["lat"], p["lon"]] for p in traza]
             folium.PolyLine(
-                locations=ruta_hub_nodo,
+                locations=coords,
                 color="deepskyblue",
                 weight=4,
-                tooltip="Fibra HUB → NODO"
+                opacity=0.9
             ).add_to(m)
 
-            # Rutas NODO → NAPs por calles
-            for _, nap in naps.iterrows():
-                ruta_nodo_nap = obtener_ruta_osrm(
-                    nodo["lat"], nodo["lon"],
-                    nap["lat"], nap["lon"]
-                )
-                folium.PolyLine(
-                    locations=ruta_nodo_nap,
-                    color="deepskyblue",
-                    weight=3,
-                    tooltip=f"Fibra NODO → NAP {nap['nombre']}"
-                ).add_to(m)
+    # Dibujar la traza actual (en construcción)
+    if len(st.session_state.traza_actual) >= 2:
+        coords_actual = [[p["lat"], p["lon"]] for p in st.session_state.traza_actual]
+        folium.PolyLine(
+            locations=coords_actual,
+            color="cyan",
+            weight=3,
+            opacity=0.7,
+            dash_array="5, 5"
+        ).add_to(m)
+
+    # También marcamos los puntos de la traza actual
+    for p in st.session_state.traza_actual:
+        folium.CircleMarker(
+            location=[p["lat"], p["lon"]],
+            radius=3,
+            color="white",
+            fill=True,
+            fill_color="white",
+            fill_opacity=1.0
+        ).add_to(m)
 
     # Mostrar mapa y capturar clic
     mapa_data = st_folium(m, width="100%", height=500)
 
-    # Guardar último clic normalizando lon/lng
+    # Guardar clic según modo
     if mapa_data and mapa_data.get("last_clicked") is not None:
         raw_click = mapa_data["last_clicked"]
         lat = raw_click.get("lat")
         lon = raw_click.get("lng") or raw_click.get("lon")
         if lat is not None and lon is not None:
-            st.session_state.last_click = {"lat": lat, "lon": lon}
-
+            if modo == "Colocar elementos":
+                st.session_state.last_click = {"lat": lat, "lon": lon}
+            else:
+                st.session_state.traza_actual.append({"lat": lat, "lon": lon})
 
 
 # -------- TABLA RESUMEN --------
