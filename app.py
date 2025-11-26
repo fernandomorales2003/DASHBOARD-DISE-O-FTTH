@@ -351,8 +351,6 @@ with col_form:
     if st.button("🗑️ Limpiar diseño completo"):
         st.session_state.ftth_elementos = []
         st.warning("Se han eliminado todos los elementos del diseño.")
-
-
 # -------- MAPA LADO DERECHO --------
 with col_mapa:
     st.subheader("2. Mapa interactivo — Hacé clic para ubicar elementos")
@@ -367,22 +365,26 @@ with col_mapa:
         center_lat = df_tmp["lat"].mean()
         center_lon = df_tmp["lon"].mean()
 
-m = folium.Map(
-    location=[center_lat, center_lon],
-    zoom_start=13,
-    tiles="CartoDB dark_matter"  # mapa oscuro tipo night mode
-)
-css = """
-<style>
-.leaflet-container {
-    cursor: crosshair !important;   /* cambia la manito por mira */
-}
-.leaflet-interactive {
-    cursor: crosshair !important;   /* también sobre líneas y figuras */
-}
-</style>
-"""
-m.get_root().header.add_child(Element(css))
+    # Mapa oscuro
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=13,
+        tiles="CartoDB dark_matter"
+    )
+
+    # Cambiar puntero a crosshair
+    css = """
+    <style>
+    .leaflet-container {
+        cursor: crosshair !important;
+    }
+    .leaflet-interactive {
+        cursor: crosshair !important;
+    }
+    </style>
+    """
+    from branca.element import Element
+    m.get_root().header.add_child(Element(css))
 
     # Agregar elementos existentes con distintas formas
     for elem in st.session_state.ftth_elementos:
@@ -458,6 +460,7 @@ m.get_root().header.add_child(Element(css))
         if not hubs.empty and not nodos.empty:
             hub = hubs.iloc[0]
             nodo = nodos.iloc[0]
+
             # Línea HUB → NODO
             folium.PolyLine(
                 locations=[
@@ -491,6 +494,7 @@ m.get_root().header.add_child(Element(css))
         lon = raw_click.get("lng") or raw_click.get("lon")
         if lat is not None and lon is not None:
             st.session_state.last_click = {"lat": lat, "lon": lon}
+
 
 # -------- TABLA RESUMEN --------
 st.subheader("3. Resumen de elementos del diseño")
