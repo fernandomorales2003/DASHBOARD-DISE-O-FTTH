@@ -435,19 +435,14 @@ with col_form:
 with col_mapa:
     st.subheader("2. Mapa interactivo — Clic para ubicar elementos o trazar fibra")
 
-    # Crear mapa base
-    center_lat = DEFAULT_LAT
-    center_lon = DEFAULT_LON
-
-    # Si ya hay elementos, centramos en el promedio
-    if st.session_state.ftth_elementos:
-        df_tmp = pd.DataFrame(st.session_state.ftth_elementos)
-        center_lat = df_tmp["lat"].mean()
-        center_lon = df_tmp["lon"].mean()
+    # Usar siempre la última vista conocida del mapa
+    center_lat = st.session_state.map_view["lat"]
+    center_lon = st.session_state.map_view["lon"]
+    zoom_start = st.session_state.map_view["zoom"]
 
     m = folium.Map(
         location=[center_lat, center_lon],
-        zoom_start=13,
+        zoom_start=zoom_start,
         tiles="CartoDB dark_matter"
     )
 
@@ -554,22 +549,7 @@ with col_mapa:
             fill=True,
             fill_color="white",
             fill_opacity=1.0
-        ).add_to(m)
-
-    # Mostrar mapa y capturar clic
-    mapa_data = st_folium(m, width="100%", height=500)
-
-    # Guardar clic según modo
-    if mapa_data and mapa_data.get("last_clicked") is not None:
-        raw_click = mapa_data["last_clicked"]
-        lat = raw_click.get("lat")
-        lon = raw_click.get("lng") or raw_click.get("lon")
-        if lat is not None and lon is not None:
-            if modo == "Colocar elementos":
-                st.session_state.last_click = {"lat": lat, "lon": lon}
-            else:
-                st.session_state.traza_actual.append({"lat": lat, "lon": lon})
-
+       
 
 # -------- TABLA RESUMEN --------
 st.subheader("3. Resumen de elementos del diseño")
