@@ -4,8 +4,8 @@ import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
 from branca.element import Element
-from fastkml import kml
 import zipfile
+import xml.etree.ElementTree as ET
 
 st.set_page_config(
     page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
@@ -127,12 +127,15 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
 
 
 # =========================
-# FUNCIONES AUXILIARES — MÓDULO 2 (KMZ)
+# FUNCIONES AUXILIARES — MÓDULO 2 (KMZ vía XML)
 # =========================
 
 def parsear_kmz_ftth(file_obj):
     """
-    Parser robusto para KMZ FTTH con carpetas:
+    Parser de KMZ FTTH usando xml.etree (sin fastkml).
+
+    Estructura esperada (por nombre de carpetas):
+
     FTTH-DISEÑO/
       NODO
       CABLES_TRONCALES
@@ -140,10 +143,6 @@ def parsear_kmz_ftth(file_obj):
       CAJAS_HUB
       CAJAS_NAP
     """
-    from fastkml.kml import Folder, Placemark
-    import warnings
-    warnings.filterwarnings("ignore")
-
     data = {
         "nodo": [],
         "cables_troncales": [],
@@ -152,7 +151,7 @@ def parsear_kmz_ftth(file_obj):
         "cajas_nap": []
     }
 
-    # ---------- 1) Extraer el archivo KML del KMZ ----------
+    # 1) Abrir KMZ (zip) y encontrar el primer .kml
     with zipfile.ZipFile(file_obj) as zf:
         kml_name = None
         for info in zf.infolist():
@@ -165,83 +164,88 @@ def parsear_kmz_ftth(file_obj):
 
         kml_bytes = zf.read(kml_name)
 
-    # ---------- 2) Parsear KML con fastkml ----------
-    k_obj = kml.KML()
-    k_obj.from_string(kml_bytes)
+    # 2) Parsear XML del KML
+    # El namespace por defecto en KML 2.2:
+    ns = {"k": "http://www.opengis.net/kml/2.2"}
+    root = ET.fromstring(kml_bytes)
 
-    # ---------- 3) Función segura para iterar features ----------
-    def safe_features(f):
+    # Intentar encontrar Document; si no, usamos root directo
+    document = root.find("k:Document", ns)
+    if document is None:
+        document = root
+
+    def get_text(elem):
+        return elem.text.strip() if elem is not None and elem.text else ""
+
+    def parse_coordinates(text_coords):
         """
-        Devuelve una lista segura de features.
-        Soporta casos donde f.features es:
-        - función
-        - lista
-        - inexistente
+        Convierte string de KML coordinates en lista de [lat, lon].
+        Formato típico: "lon,lat,alt lon,lat,alt ..."
         """
-        if hasattr(f, "features"):
-            return list(f.features())
-        return []
-
-    # ---------- 4) Walker recursivo ----------
-    def walk(obj, path=""):
-        for f in safe_features(obj):
-            name = getattr(f, "name", "") or ""
-            new_path = f"{path}/{name}" if path else name
-
-            # Si es carpeta → descender
-            if isinstance(f, Folder):
-                walk(f, new_path)
-
-            # Si es Placemark → procesar geometría
-            elif isinstance(f, Placemark):
-                geom = f.geometry
-                if geom is None:
+        coords = []
+        if not text_coords:
+            return coords
+        for token in text_coords.strip().split():
+            parts = token.split(",")
+            if len(parts) >= 2:
+                try:
+                    lon = float(parts[0])
+                    lat = float(parts[1])
+                    coords.append([lat, lon])
+                except ValueError:
                     continue
+        return coords
 
-                p = new_path.upper()
+    def walk_folder(folder_elem, path=""):
+        """
+        Recorre recursivamente carpetas (<Folder>) y procesa <Placemark>.
+        path acumula los nombres de carpeta para clasificar: NODO, CAJAS_HUB, etc.
+        """
+        name_elem = folder_elem.find("k:name", ns)
+        folder_name = get_text(name_elem)
+        new_path = f"{path}/{folder_name}" if path else folder_name
 
-                # ----- PUNTOS -----
-                if geom.geom_type == "Point":
-                    lon, lat = list(geom.coords)[0]
+        # Procesar todos los Placemark dentro de esta carpeta
+        for pm in folder_elem.findall("k:Placemark", ns):
+            pm_name = get_text(pm.find("k:name", ns))
+            pm_path = f"{new_path}/{pm_name}" if new_path else pm_name
+            path_upper = pm_path.upper()
 
-                    punto = {"name": name, "lat": lat, "lon": lon}
-
-                    if "NODO" in p:
+            # Punto
+            point = pm.find(".//k:Point", ns)
+            if point is not None:
+                coords_elem = point.find("k:coordinates", ns)
+                coords_list = parse_coordinates(get_text(coords_elem))
+                if coords_list:
+                    lat, lon = coords_list[0]
+                    punto = {"name": pm_name, "lat": lat, "lon": lon}
+                    if "NODO" in path_upper:
                         data["nodo"].append(punto)
-                    elif "CAJAS_HUB" in p:
+                    elif "CAJAS_HUB" in path_upper:
                         data["cajas_hub"].append(punto)
-                    elif "CAJAS_NAP" in p:
+                    elif "CAJAS_NAP" in path_upper:
                         data["cajas_nap"].append(punto)
+                    continue  # si ya fue punto, no seguimos con línea
 
-                # ----- LÍNEAS -----
-                elif geom.geom_type in ("LineString", "MultiLineString"):
-                    lineas = []
+            # Línea (LineString)
+            line = pm.find(".//k:LineString", ns)
+            if line is not None:
+                coords_elem = line.find("k:coordinates", ns)
+                coords_list = parse_coordinates(get_text(coords_elem))
+                if coords_list:
+                    if "CABLES_TRONCALES" in path_upper:
+                        data["cables_troncales"].append(coords_list)
+                    elif "CABLES_DERIVACIONES" in path_upper:
+                        data["cables_derivaciones"].append(coords_list)
 
-                    if geom.geom_type == "LineString":
-                        lineas = [geom.coords]
-                    else:
-                        for g in geom.geoms:
-                            lineas.append(g.coords)
+        # Recorrer carpetas hijas
+        for subfolder in folder_elem.findall("k:Folder", ns):
+            walk_folder(subfolder, new_path)
 
-                    # Convertir a [ [lat,lon], ... ]
-                    for linea in lineas:
-                        coords_latlon = [[lat, lon] for lon, lat in linea]
-
-                        if "CABLES_TRONCALES" in p:
-                            data["cables_troncales"].append(coords_latlon)
-                        elif "CABLES_DERIVACIONES" in p:
-                            data["cables_derivaciones"].append(coords_latlon)
-
-    # ---------- 5) Recorrer todos los elementos raíz ----------
-    for root in safe_features(k_obj):
-        walk(root)
-
-    return data
-
-
-    # Recorrer raíz
-    for f in k_obj.features():
-        walk_features(f.features(), f.name or "")
+    # 3) Iniciar recorrido desde Document
+    # Puede haber varias carpetas raíz
+    for folder in document.findall("k:Folder", ns):
+        walk_folder(folder, "")
 
     return data
 
