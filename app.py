@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import requests
 import folium
 from streamlit_folium import st_folium
 from branca.element import Element
-
 
 st.set_page_config(
     page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
@@ -71,7 +69,6 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
     Crea un mapa lógico horizontal OLT → NAP → CTO → ONT usando Plotly.
     Las distancias se expresan en km y se acumulan sobre el eje X.
     """
-    # Posiciones acumuladas
     x_olt = 0
     x_nap = d_olt_nap
     x_cto = d_olt_nap + d_nap_cto
@@ -83,7 +80,6 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
 
     fig = go.Figure()
 
-    # Línea entre nodos
     fig.add_trace(go.Scatter(
         x=x_vals,
         y=y_vals,
@@ -94,7 +90,6 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         line=dict(width=3)
     ))
 
-    # Agregar anotaciones de distancias
     fig.add_annotation(
         x=(x_olt + x_nap) / 2,
         y=-0.05,
@@ -148,7 +143,6 @@ Esta primera sección integra:
 
 col_izq, col_der = st.columns([1.1, 1])
 
-# -------- COLUMNA IZQUIERDA: MAPA LÓGICO --------
 with col_izq:
     st.subheader("1. Configuración del enlace y mapa FTTH")
 
@@ -164,11 +158,9 @@ with col_izq:
     dist_total = d_olt_nap + d_nap_cto + d_cto_ont
     st.markdown(f"**Distancia total del enlace:** `{dist_total:.2f} km`")
 
-    # Mostrar mapa lógico
     fig_mapa = crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont)
     st.plotly_chart(fig_mapa, use_container_width=True)
 
-    # Tabla resumen de tramos
     st.markdown("#### Resumen de tramos")
     df_tramos = pd.DataFrame({
         "Tramo": ["OLT → NAP", "NAP → CTO", "CTO → ONT"],
@@ -176,7 +168,6 @@ with col_izq:
     })
     st.dataframe(df_tramos, use_container_width=True, hide_index=True)
 
-# -------- COLUMNA DERECHA: PRESUPUESTO ÓPTICO --------
 with col_der:
     st.subheader("2. Presupuesto óptico del enlace")
 
@@ -192,7 +183,7 @@ with col_der:
     with c3:
         atenuacion_db_km = st.number_input("Atenuación fibra (dB/km)", value=0.21, step=0.01)
     with c4:
-        st.write("")  # Relleno
+        st.write("")
 
     st.markdown("#### Empalmes y conectores")
     c5, c6 = st.columns(2)
@@ -272,36 +263,7 @@ with col_der:
     st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
 
     st.info(resultados["comentario"])
-def obtener_ruta_osrm(lat1, lon1, lat2, lon2):
-    """
-    Pide a OSRM una ruta por calles entre dos puntos.
-    Devuelve una lista de [lat, lon] que se puede usar en folium.PolyLine.
-    Si falla, devuelve la línea recta entre los dos puntos.
-    """
-    try:
-        url = (
-            f"https://router.project-osrm.org/route/v1/driving/"
-            f"{lon1},{lat1};{lon2},{lat2}"
-        )
-        params = {"overview": "full", "geometries": "geojson"}
-        r = requests.get(url, params=params, timeout=5)
-        r.raise_for_status()
-        data = r.json()
 
-        coords = data["routes"][0]["geometry"]["coordinates"]  # [ [lon,lat], ... ]
-        # Convertimos a [lat, lon] que es lo que usa Folium
-        ruta = [[lat, lon] for lon, lat in coords]
-        return ruta
-
-    except Exception:
-        # Fallback: línea recta
-        return [[lat1, lon1], [lat2, lon2]]
-
-if "traza_actual" not in st.session_state:
-    st.session_state.traza_actual = []   # lista de puntos de la traza que se está dibujando
-
-if "trazas" not in st.session_state:
-    st.session_state.trazas = []         # lista de trazas guardadas (cada una es lista de puntos)
 
 # =========================
 # MÓDULO 2 — DISEÑO FTTH EN MAPA (MANUAL)
@@ -323,7 +285,7 @@ En este módulo podés diseñar de forma visual la red FTTH:
 DEFAULT_LAT = -32.8894
 DEFAULT_LON = -68.8458
 
-# Estado para guardar los elementos
+# Estado para guardar los elementos y trazas
 if "ftth_elementos" not in st.session_state:
     st.session_state.ftth_elementos = []  # lista de dicts {tipo, nombre, lat, lon}
 
@@ -336,14 +298,15 @@ if "traza_actual" not in st.session_state:
 if "trazas" not in st.session_state:
     st.session_state.trazas = []         # lista de listas de dicts
 
-col_form, col_mapa = st.columns([0.9, 1.1])
-
 if "map_view" not in st.session_state:
     st.session_state.map_view = {
         "lat": DEFAULT_LAT,
         "lon": DEFAULT_LON,
-        "zoom": 15,   # podés ajustar el zoom inicial
+        "zoom": 15,
     }
+
+col_form, col_mapa = st.columns([0.9, 1.1])
+
 # -------- FORMULARIO LADO IZQUIERDO --------
 with col_form:
     st.subheader("1. Modo de interacción")
@@ -430,6 +393,7 @@ with col_form:
                 st.session_state.trazas = []
                 st.session_state.traza_actual = []
                 st.warning("Se eliminaron todas las trazas.")
+
 
 # -------- MAPA LADO DERECHO --------
 with col_mapa:
@@ -549,7 +513,32 @@ with col_mapa:
             fill=True,
             fill_color="white",
             fill_opacity=1.0
-       
+        ).add_to(m)
+
+    # Render del mapa y captura de datos
+    mapa_data = st_folium(m, width="100%", height=500)
+
+    # Actualizar vista (centro y zoom) para evitar zoom-out al recargar
+    if mapa_data:
+        center = mapa_data.get("center")
+        zoom = mapa_data.get("zoom")
+        if center is not None:
+            st.session_state.map_view["lat"] = center.get("lat", st.session_state.map_view["lat"])
+            st.session_state.map_view["lon"] = center.get("lng", st.session_state.map_view["lon"])
+        if zoom is not None:
+            st.session_state.map_view["zoom"] = zoom
+
+        # Guardar clic según modo
+        if mapa_data.get("last_clicked") is not None:
+            raw_click = mapa_data["last_clicked"]
+            lat = raw_click.get("lat")
+            lon = raw_click.get("lng") or raw_click.get("lon")
+            if lat is not None and lon is not None:
+                if modo == "Colocar elementos":
+                    st.session_state.last_click = {"lat": lat, "lon": lon}
+                else:
+                    st.session_state.traza_actual.append({"lat": lat, "lon": lon})
+
 
 # -------- TABLA RESUMEN --------
 st.subheader("3. Resumen de elementos del diseño")
