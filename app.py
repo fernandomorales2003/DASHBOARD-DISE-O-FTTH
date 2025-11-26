@@ -4,6 +4,8 @@ import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
 from branca.element import Element
+from fastkml import kml
+import zipfile
 
 st.set_page_config(
     page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
@@ -122,6 +124,109 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
     )
 
     return fig
+
+
+# =========================
+# FUNCIONES AUXILIARES — MÓDULO 2 (KMZ)
+# =========================
+
+def parsear_kmz_ftth(file_obj):
+    """
+    Parsea un KMZ con estructura:
+
+    FTTH-DISEÑO/
+      NODO
+      CABLES_TRONCALES
+      CABLES_DERIVACIONES
+      CAJAS_HUB
+      CAJAS_NAP
+
+    Devuelve un dict con:
+    {
+      "nodo": [ {name, lat, lon}, ... ],
+      "cables_troncales": [ [ [lat,lon], ... ], ... ],
+      "cables_derivaciones": [ [ [lat,lon], ... ], ... ],
+      "cajas_hub": [ {name, lat, lon}, ... ],
+      "cajas_nap": [ {name, lat, lon}, ... ]
+    }
+    """
+    data = {
+        "nodo": [],
+        "cables_troncales": [],
+        "cables_derivaciones": [],
+        "cajas_hub": [],
+        "cajas_nap": []
+    }
+
+    # KMZ = ZIP → buscamos el primer .kml adentro
+    with zipfile.ZipFile(file_obj) as zf:
+        kml_name = None
+        for info in zf.infolist():
+            if info.filename.lower().endswith(".kml"):
+                kml_name = info.filename
+                break
+
+        if kml_name is None:
+            raise ValueError("El KMZ no contiene ningún archivo .kml")
+
+        kml_bytes = zf.read(kml_name)
+
+    # Parsear KML
+    k_obj = kml.KML()
+    k_obj.from_string(kml_bytes)
+
+    from fastkml.kml import Folder, Placemark
+
+    def walk_features(features, path=""):
+        for f in features:
+            fname = getattr(f, "name", "") or ""
+            new_path = f"{path}/{fname}" if path else fname
+
+            if isinstance(f, Folder):
+                walk_features(f.features(), new_path)
+            elif isinstance(f, Placemark):
+                geom = f.geometry
+                if geom is None:
+                    continue
+
+                path_upper = new_path.upper()
+
+                # Puntos
+                if geom.geom_type == "Point":
+                    lon, lat = list(geom.coords)[0]  # (lon,lat)
+                    punto = {
+                        "name": fname,
+                        "lat": lat,
+                        "lon": lon
+                    }
+                    if "NODO" in path_upper:
+                        data["nodo"].append(punto)
+                    elif "CAJAS_HUB" in path_upper:
+                        data["cajas_hub"].append(punto)
+                    elif "CAJAS_NAP" in path_upper:
+                        data["cajas_nap"].append(punto)
+
+                # Líneas
+                elif geom.geom_type in ("LineString", "MultiLineString"):
+                    lineas = []
+                    if geom.geom_type == "LineString":
+                        lineas = [geom.coords]
+                    else:
+                        for g in geom.geoms:
+                            lineas.append(g.coords)
+
+                    for linea in lineas:
+                        coords_latlon = [[lat, lon] for lon, lat in linea]
+                        if "CABLES_TRONCALES" in path_upper:
+                            data["cables_troncales"].append(coords_latlon)
+                        elif "CABLES_DERIVACIONES" in path_upper:
+                            data["cables_derivaciones"].append(coords_latlon)
+
+    # Recorrer raíz
+    for f in k_obj.features():
+        walk_features(f.features(), f.name or "")
+
+    return data
 
 
 # =========================
@@ -266,289 +371,197 @@ with col_der:
 
 
 # =========================
-# MÓDULO 2 — DISEÑO FTTH EN MAPA (MANUAL)
+# MÓDULO 2 — VISUALIZACIÓN DE FTTH DESDE KMZ
 # =========================
 
 st.markdown("---")
-st.header("Módulo de Diseño FTTH en Mapa — HUB / NODO / NAP / BOTELLA + Trazas manuales")
+st.header("Módulo 2 — Visualización de diseño FTTH desde archivo KMZ")
 
 st.markdown(
     """
-En este módulo podés diseñar de forma visual la red FTTH:
+Subí un archivo **KMZ** con la siguiente estructura de carpetas:
 
-- **Modo Colocar elementos**: HUB, NODO, NAP o BOTELLA, haciendo clic en el mapa.
-- **Modo Dibujar traza de fibra**: vas clickeando por las calles para armar la traza manualmente.
+`FTTH-DISEÑO/`
+- `NODO`
+- `CABLES_TRONCALES`
+- `CABLES_DERIVACIONES`
+- `CAJAS_HUB`
+- `CAJAS_NAP`
+
+El sistema dibuja automáticamente:
+
+- NODO
+- Cables troncales
+- Cables de derivación
+- Cajas HUB
+- Cajas NAP
 """
 )
 
-# Centro por defecto (Mendoza)
-DEFAULT_LAT = -32.8894
-DEFAULT_LON = -68.8458
+# Estado para guardar el último diseño cargado
+if "kmz_data" not in st.session_state:
+    st.session_state.kmz_data = None
 
-# Estado para guardar los elementos y trazas
-if "ftth_elementos" not in st.session_state:
-    st.session_state.ftth_elementos = []  # lista de dicts {tipo, nombre, lat, lon}
+col_kmz, col_mapa = st.columns([0.9, 1.1])
 
-if "last_click" not in st.session_state:
-    st.session_state.last_click = None
+with col_kmz:
+    st.subheader("1. Cargar archivo KMZ")
 
-if "traza_actual" not in st.session_state:
-    st.session_state.traza_actual = []   # lista de dicts {lat, lon}
+    kmz_file = st.file_uploader("Seleccioná un archivo KMZ", type=["kmz"])
 
-if "trazas" not in st.session_state:
-    st.session_state.trazas = []         # lista de listas de dicts
+    if kmz_file is not None:
+        try:
+            st.session_state.kmz_data = parsear_kmz_ftth(kmz_file)
+            st.success("KMZ cargado y procesado correctamente.")
+        except Exception as e:
+            st.session_state.kmz_data = None
+            st.error(f"Error al procesar el KMZ: {e}")
 
-if "map_view" not in st.session_state:
-    st.session_state.map_view = {
-        "lat": DEFAULT_LAT,
-        "lon": DEFAULT_LON,
-        "zoom": 15,
-    }
+    if st.button("🗑️ Limpiar diseño cargado"):
+        st.session_state.kmz_data = None
+        st.warning("Se limpió el diseño cargado.")
 
-col_form, col_mapa = st.columns([0.9, 1.1])
+with col_mapa:
+    st.subheader("2. Mapa FTTH desde KMZ")
 
-# -------- FORMULARIO LADO IZQUIERDO --------
-with col_form:
-    st.subheader("1. Modo de interacción")
-
-    modo = st.radio(
-        "¿Qué querés hacer?",
-        ["Colocar elementos", "Dibujar traza de fibra"]
-    )
-
-    # =======================
-    # MODO: COLOCAR ELEMENTOS
-    # =======================
-    if modo == "Colocar elementos":
-        st.markdown("### Colocar HUB / NODO / NAP / BOTELLA")
-
-        tipo = st.selectbox("Tipo de elemento", ["HUB", "NODO", "NAP", "BOTELLA"])
-        nombre = st.text_input("Nombre / Identificación", value=f"{tipo}_1")
-
-        st.markdown("#### Último punto clickeado en el mapa")
-        if st.session_state.last_click is None:
-            st.info("Hacé clic en el mapa para elegir la posición.")
-            lat_click = None
-            lon_click = None
-        else:
-            lat_click = st.session_state.last_click.get("lat")
-            lon_click = st.session_state.last_click.get("lon")
-            if lat_click is not None and lon_click is not None:
-                st.code(f"Lat: {lat_click:.6f}  |  Lon: {lon_click:.6f}")
-            else:
-                st.info("Hacé clic en el mapa para elegir la posición.")
-                lat_click = None
-                lon_click = None
-
-        if st.button("➕ Agregar elemento en la posición clickeada"):
-            if nombre.strip() == "":
-                st.warning("Por favor ingresá un nombre para el elemento.")
-            elif lat_click is None or lon_click is None:
-                st.warning("Primero hacé clic en el mapa para elegir la posición.")
-            else:
-                st.session_state.ftth_elementos.append(
-                    {
-                        "tipo": tipo,
-                        "nombre": nombre.strip(),
-                        "lat": lat_click,
-                        "lon": lon_click
-                    }
-                )
-                st.success(f"{tipo} '{nombre}' agregado al diseño.")
-
-        if st.button("🗑️ Limpiar elementos (HUB/NODO/NAP/BOTELLA)"):
-            st.session_state.ftth_elementos = []
-            st.warning("Se han eliminado todos los elementos del diseño.")
-
-    # =======================
-    # MODO: DIBUJAR TRAZA
-    # =======================
+    if not st.session_state.kmz_data:
+        st.info("Subí un KMZ válido para visualizar el diseño.")
     else:
-        st.markdown("### Dibujar traza de fibra (manual)")
-        st.info(
-            "Hacé clic en el mapa para ir agregando puntos a la traza.\n\n"
-            "Cuando termines:\n"
-            "- Usá **Guardar traza** para fijarla.\n"
-            "- Usá **Deshacer último punto** si te equivocaste.\n"
-            "- Podés dibujar varias trazas."
+        data = st.session_state.kmz_data
+
+        # Calculamos un centro aproximado (promedio de todos los puntos)
+        latitudes = []
+        longitudes = []
+
+        for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"]:
+            latitudes.append(p["lat"])
+            longitudes.append(p["lon"])
+
+        for linea in data["cables_troncales"] + data["cables_derivaciones"]:
+            for lat, lon in linea:
+                latitudes.append(lat)
+                longitudes.append(lon)
+
+        if latitudes and longitudes:
+            center_lat = sum(latitudes) / len(latitudes)
+            center_lon = sum(longitudes) / len(longitudes)
+        else:
+            center_lat = -32.8894
+            center_lon = -68.8458
+
+        m = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=14,
+            tiles="CartoDB dark_matter"
         )
 
-        st.markdown(f"Puntos en la traza actual: **{len(st.session_state.traza_actual)}**")
+        # Cursor tipo mira
+        css = """
+        <style>
+        .leaflet-container {
+            cursor: crosshair !important;
+        }
+        .leaflet-interactive {
+            cursor: crosshair !important;
+        }
+        </style>
+        """
+        m.get_root().header.add_child(Element(css))
 
-        c_btn1, c_btn2, c_btn3 = st.columns(3)
-        with c_btn1:
-            if st.button("✅ Guardar traza actual"):
-                if len(st.session_state.traza_actual) < 2:
-                    st.warning("La traza necesita al menos 2 puntos.")
-                else:
-                    st.session_state.trazas.append(st.session_state.traza_actual.copy())
-                    st.session_state.traza_actual = []
-                    st.success("Traza guardada.")
-        with c_btn2:
-            if st.button("↩️ Deshacer último punto"):
-                if st.session_state.traza_actual:
-                    st.session_state.traza_actual.pop()
-        with c_btn3:
-            if st.button("🗑️ Borrar todas las trazas"):
-                st.session_state.trazas = []
-                st.session_state.traza_actual = []
-                st.warning("Se eliminaron todas las trazas.")
+        # --- NODO (punto) ---
+        for nodo in data["nodo"]:
+            folium.CircleMarker(
+                location=[nodo["lat"], nodo["lon"]],
+                radius=9,
+                color="red",
+                fill=True,
+                fill_color="red",
+                fill_opacity=0.9,
+                popup=f"NODO: {nodo['name']}"
+            ).add_to(m)
 
+        # --- CABLES TRONCALES (líneas gruesas) ---
+        for linea in data["cables_troncales"]:
+            folium.PolyLine(
+                locations=linea,
+                color="deepskyblue",
+                weight=5,
+                opacity=0.9,
+                tooltip="CABLE TRONCAL"
+            ).add_to(m)
 
-# -------- MAPA LADO DERECHO --------
-with col_mapa:
-    st.subheader("2. Mapa interactivo — Clic para ubicar elementos o trazar fibra")
+        # --- CABLES DERIVACIONES (líneas más finas) ---
+        for linea in data["cables_derivaciones"]:
+            folium.PolyLine(
+                locations=linea,
+                color="orange",
+                weight=3,
+                opacity=0.8,
+                tooltip="CABLE DERIVACIÓN"
+            ).add_to(m)
 
-    # Usar siempre la última vista conocida del mapa
-    center_lat = st.session_state.map_view["lat"]
-    center_lon = st.session_state.map_view["lon"]
-    zoom_start = st.session_state.map_view["zoom"]
-
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=zoom_start,
-        tiles="CartoDB dark_matter"
-    )
-
-    # Cambiar puntero a crosshair
-    css = """
-    <style>
-    .leaflet-container {
-        cursor: crosshair !important;
-    }
-    .leaflet-interactive {
-        cursor: crosshair !important;
-    }
-    </style>
-    """
-    m.get_root().header.add_child(Element(css))
-
-    # Agregar elementos existentes con distintas formas
-    for elem in st.session_state.ftth_elementos:
-        e_lat = elem["lat"]
-        e_lon = elem["lon"]
-        e_tipo = elem["tipo"]
-        e_nombre = elem["nombre"]
-
-        if e_tipo == "HUB":
-            marker = folium.RegularPolygonMarker(
-                location=[e_lat, e_lon],
+        # --- CAJAS HUB (rombos azules) ---
+        for hub in data["cajas_hub"]:
+            folium.RegularPolygonMarker(
+                location=[hub["lat"], hub["lon"]],
                 number_of_sides=4,
-                radius=12,
+                radius=10,
                 rotation=45,
                 color="blue",
                 weight=2,
                 fill=True,
                 fill_color="blue",
-                fill_opacity=0.7,
-                popup=f"HUB: {e_nombre}"
-            )
-        elif e_tipo == "NODO":
-            marker = folium.CircleMarker(
-                location=[e_lat, e_lon],
-                radius=10,
-                color="red",
-                fill=True,
-                fill_color="red",
-                fill_opacity=0.7,
-                popup=f"NODO: {e_nombre}"
-            )
-        elif e_tipo == "NAP":
-            marker = folium.RegularPolygonMarker(
-                location=[e_lat, e_lon],
-                number_of_sides=3,
-                radius=10,
-                rotation=0,
-                color="green",
-                weight=2,
-                fill=True,
-                fill_color="green",
-                fill_opacity=0.7,
-                popup=f"NAP: {e_nombre}"
-            )
-        else:
-            marker = folium.RegularPolygonMarker(
-                location=[e_lat, e_lon],
-                number_of_sides=4,
-                radius=10,
-                rotation=0,
-                color="purple",
-                weight=2,
-                fill=True,
-                fill_color="purple",
-                fill_opacity=0.7,
-                popup=f"BOTELLA: {e_nombre}"
-            )
-
-        marker.add_to(m)
-
-    # Dibujar trazas guardadas
-    for traza in st.session_state.trazas:
-        if len(traza) >= 2:
-            coords = [[p["lat"], p["lon"]] for p in traza]
-            folium.PolyLine(
-                locations=coords,
-                color="deepskyblue",
-                weight=4,
-                opacity=0.9
+                fill_opacity=0.9,
+                popup=f"CAJA HUB: {hub['name']}"
             ).add_to(m)
 
-    # Dibujar la traza actual (en construcción)
-    if len(st.session_state.traza_actual) >= 2:
-        coords_actual = [[p["lat"], p["lon"]] for p in st.session_state.traza_actual]
-        folium.PolyLine(
-            locations=coords_actual,
-            color="cyan",
-            weight=3,
-            opacity=0.7,
-            dash_array="5, 5"
-        ).add_to(m)
+        # --- CAJAS NAP (triángulos verdes) ---
+        for nap in data["cajas_nap"]:
+            folium.RegularPolygonMarker(
+                location=[nap["lat"], nap["lon"]],
+                number_of_sides=3,
+                radius=9,
+                rotation=0,
+                color="lime",
+                weight=2,
+                fill=True,
+                fill_color="lime",
+                fill_opacity=0.9,
+                popup=f"CAJA NAP: {nap['name']}"
+            ).add_to(m)
 
-    # También marcamos los puntos de la traza actual
-    for p in st.session_state.traza_actual:
-        folium.CircleMarker(
-            location=[p["lat"], p["lon"]],
-            radius=3,
-            color="white",
-            fill=True,
-            fill_color="white",
-            fill_opacity=1.0
-        ).add_to(m)
+        st_folium(m, width="100%", height=550, key="mapa_kmz")
 
-    # Render del mapa y captura de datos
-    mapa_data = st_folium(m, width="100%", height=500, key="mapa_ftth")
-    
-    # Actualizar vista (centro y zoom) para evitar zoom-out al recargar
-    if mapa_data:
-        center = mapa_data.get("center")
-        zoom = mapa_data.get("zoom")
-        if center is not None:
-            st.session_state.map_view["lat"] = center.get("lat", st.session_state.map_view["lat"])
-            st.session_state.map_view["lon"] = center.get("lng", st.session_state.map_view["lon"])
-        if zoom is not None:
-            st.session_state.map_view["zoom"] = zoom
+# -------- RESUMEN TABULAR --------
+st.subheader("3. Resumen de elementos del diseño (KMZ)")
 
-        # Guardar clic según modo
-        if mapa_data.get("last_clicked") is not None:
-            raw_click = mapa_data["last_clicked"]
-            lat = raw_click.get("lat")
-            lon = raw_click.get("lng") or raw_click.get("lon")
-            if lat is not None and lon is not None:
-                if modo == "Colocar elementos":
-                    st.session_state.last_click = {"lat": lat, "lon": lon}
-                else:
-                    st.session_state.traza_actual.append({"lat": lat, "lon": lon})
-
-
-# -------- TABLA RESUMEN --------
-st.subheader("3. Resumen de elementos del diseño")
-
-if not st.session_state.ftth_elementos:
-    st.info("No hay elementos cargados todavía. Usá el mapa para empezar a diseñar.")
+if not st.session_state.kmz_data:
+    st.info("Subí un KMZ para ver el resumen de elementos.")
 else:
-    df_resumen = pd.DataFrame(st.session_state.ftth_elementos)
-    st.dataframe(
-        df_resumen[["tipo", "nombre", "lat", "lon"]],
-        use_container_width=True,
-        hide_index=True
-    )
+    data = st.session_state.kmz_data
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**NODO**")
+        if data["nodo"]:
+            df_nodo = pd.DataFrame(data["nodo"])
+            st.dataframe(df_nodo, use_container_width=True, hide_index=True)
+        else:
+            st.write("Sin NODO definido.")
+
+    with col2:
+        st.markdown("**Cajas HUB**")
+        if data["cajas_hub"]:
+            df_hub = pd.DataFrame(data["cajas_hub"])
+            st.dataframe(df_hub, use_container_width=True, hide_index=True)
+        else:
+            st.write("Sin cajas HUB.")
+
+    with col3:
+        st.markdown("**Cajas NAP**")
+        if data["cajas_nap"]:
+            df_nap = pd.DataFrame(data["cajas_nap"])
+            st.dataframe(df_nap, use_container_width=True, hide_index=True)
+        else:
+            st.write("Sin cajas NAP.")
