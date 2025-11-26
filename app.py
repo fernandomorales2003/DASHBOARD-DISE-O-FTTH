@@ -132,24 +132,18 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
 
 def parsear_kmz_ftth(file_obj):
     """
-    Parsea un KMZ con estructura:
-
+    Parser robusto para KMZ FTTH con carpetas:
     FTTH-DISEÑO/
       NODO
       CABLES_TRONCALES
       CABLES_DERIVACIONES
       CAJAS_HUB
       CAJAS_NAP
-
-    Devuelve un dict con:
-    {
-      "nodo": [ {name, lat, lon}, ... ],
-      "cables_troncales": [ [ [lat,lon], ... ], ... ],
-      "cables_derivaciones": [ [ [lat,lon], ... ], ... ],
-      "cajas_hub": [ {name, lat, lon}, ... ],
-      "cajas_nap": [ {name, lat, lon}, ... ]
-    }
     """
+    from fastkml.kml import Folder, Placemark
+    import warnings
+    warnings.filterwarnings("ignore")
+
     data = {
         "nodo": [],
         "cables_troncales": [],
@@ -158,7 +152,7 @@ def parsear_kmz_ftth(file_obj):
         "cajas_nap": []
     }
 
-    # KMZ = ZIP → buscamos el primer .kml adentro
+    # ---------- 1) Extraer el archivo KML del KMZ ----------
     with zipfile.ZipFile(file_obj) as zf:
         kml_name = None
         for info in zf.infolist():
@@ -171,56 +165,79 @@ def parsear_kmz_ftth(file_obj):
 
         kml_bytes = zf.read(kml_name)
 
-    # Parsear KML
+    # ---------- 2) Parsear KML con fastkml ----------
     k_obj = kml.KML()
     k_obj.from_string(kml_bytes)
 
-    from fastkml.kml import Folder, Placemark
+    # ---------- 3) Función segura para iterar features ----------
+    def safe_features(f):
+        """
+        Devuelve una lista segura de features.
+        Soporta casos donde f.features es:
+        - función
+        - lista
+        - inexistente
+        """
+        if hasattr(f, "features"):
+            return list(f.features())
+        return []
 
-    def walk_features(features, path=""):
-        for f in features:
-            fname = getattr(f, "name", "") or ""
-            new_path = f"{path}/{fname}" if path else fname
+    # ---------- 4) Walker recursivo ----------
+    def walk(obj, path=""):
+        for f in safe_features(obj):
+            name = getattr(f, "name", "") or ""
+            new_path = f"{path}/{name}" if path else name
 
+            # Si es carpeta → descender
             if isinstance(f, Folder):
-                walk_features(f.features(), new_path)
+                walk(f, new_path)
+
+            # Si es Placemark → procesar geometría
             elif isinstance(f, Placemark):
                 geom = f.geometry
                 if geom is None:
                     continue
 
-                path_upper = new_path.upper()
+                p = new_path.upper()
 
-                # Puntos
+                # ----- PUNTOS -----
                 if geom.geom_type == "Point":
-                    lon, lat = list(geom.coords)[0]  # (lon,lat)
-                    punto = {
-                        "name": fname,
-                        "lat": lat,
-                        "lon": lon
-                    }
-                    if "NODO" in path_upper:
+                    lon, lat = list(geom.coords)[0]
+
+                    punto = {"name": name, "lat": lat, "lon": lon}
+
+                    if "NODO" in p:
                         data["nodo"].append(punto)
-                    elif "CAJAS_HUB" in path_upper:
+                    elif "CAJAS_HUB" in p:
                         data["cajas_hub"].append(punto)
-                    elif "CAJAS_NAP" in path_upper:
+                    elif "CAJAS_NAP" in p:
                         data["cajas_nap"].append(punto)
 
-                # Líneas
+                # ----- LÍNEAS -----
                 elif geom.geom_type in ("LineString", "MultiLineString"):
                     lineas = []
+
                     if geom.geom_type == "LineString":
                         lineas = [geom.coords]
                     else:
                         for g in geom.geoms:
                             lineas.append(g.coords)
 
+                    # Convertir a [ [lat,lon], ... ]
                     for linea in lineas:
                         coords_latlon = [[lat, lon] for lon, lat in linea]
-                        if "CABLES_TRONCALES" in path_upper:
+
+                        if "CABLES_TRONCALES" in p:
                             data["cables_troncales"].append(coords_latlon)
-                        elif "CABLES_DERIVACIONES" in path_upper:
+                        elif "CABLES_DERIVACIONES" in p:
                             data["cables_derivaciones"].append(coords_latlon)
+
+    # ---------- 5) Recorrer todos los elementos raíz ----------
+    for root in safe_features(k_obj):
+        walk(root)
+
+    return data
+
 
     # Recorrer raíz
     for f in k_obj.features():
