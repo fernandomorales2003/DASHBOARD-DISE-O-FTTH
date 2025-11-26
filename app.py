@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
+from branca.element import Element
 
 st.set_page_config(
     page_title="Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño",
@@ -371,6 +372,17 @@ m = folium.Map(
     zoom_start=13,
     tiles="CartoDB dark_matter"  # mapa oscuro tipo night mode
 )
+css = """
+<style>
+.leaflet-container {
+    cursor: crosshair !important;   /* cambia la manito por mira */
+}
+.leaflet-interactive {
+    cursor: crosshair !important;   /* también sobre líneas y figuras */
+}
+</style>
+"""
+m.get_root().header.add_child(Element(css))
 
     # Agregar elementos existentes con distintas formas
     for elem in st.session_state.ftth_elementos:
