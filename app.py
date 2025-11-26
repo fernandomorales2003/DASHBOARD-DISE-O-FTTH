@@ -140,6 +140,7 @@ def parsear_kmz_ftth(file_obj):
       NODO
       CABLES TRONCALES
       CABLES DERIVACIONES
+      CABLES PRECONECTORIZADOS
       CAJAS HUB
       CAJAS NAP
     """
@@ -147,6 +148,7 @@ def parsear_kmz_ftth(file_obj):
         "nodo": [],
         "cables_troncales": [],
         "cables_derivaciones": [],
+        "cables_preconect": [],   # nueva capa
         "cajas_hub": [],
         "cajas_nap": []
     }
@@ -206,7 +208,6 @@ def parsear_kmz_ftth(file_obj):
         # Procesar todos los Placemark dentro de esta carpeta
         for pm in folder_elem.findall("k:Placemark", ns):
             pm_name = get_text(pm.find("k:name", ns))
-            # 🔧 AQUÍ ESTABA EL ERROR: faltaba el "else pm_name"
             pm_path = f"{new_path}/{pm_name}" if new_path else pm_name
             p = pm_path.upper()
 
@@ -241,6 +242,8 @@ def parsear_kmz_ftth(file_obj):
                         data["cables_troncales"].append(coords_list)
                     elif "CABLES DERIVACIONES" in p:
                         data["cables_derivaciones"].append(coords_list)
+                    elif "CABLES PRECONECTORIZADOS" in p:
+                        data["cables_preconect"].append(coords_list)
 
         # Recorrer carpetas hijas
         for subfolder in folder_elem.findall("k:Folder", ns):
@@ -407,16 +410,18 @@ Subí un archivo **KMZ** con la siguiente estructura de carpetas:
 
 `FTTH-DISEÑO/`
 - `NODO`
-- `CABLES_TRONCALES`
-- `CABLES_DERIVACIONES`
-- `CAJAS_HUB`
-- `CAJAS_NAP`
+- `CABLES TRONCALES`
+- `CABLES DERIVACIONES`
+- `CABLES PRECONECTORIZADOS`
+- `CAJAS HUB`
+- `CAJAS NAP`
 
 El sistema dibuja automáticamente:
 
 - NODO
 - Cables troncales
 - Cables de derivación
+- Cables preconectorizados
 - Cajas HUB
 - Cajas NAP
 """
@@ -453,7 +458,7 @@ with col_mapa:
     else:
         data = st.session_state.kmz_data
 
-        # Calculamos un centro aproximado (promedio de todos los puntos)
+        # Calculamos un centro aproximado (promedio de todos los puntos y líneas)
         latitudes = []
         longitudes = []
 
@@ -461,7 +466,7 @@ with col_mapa:
             latitudes.append(p["lat"])
             longitudes.append(p["lon"])
 
-        for linea in data["cables_troncales"] + data["cables_derivaciones"]:
+        for linea in data["cables_troncales"] + data["cables_derivaciones"] + data["cables_preconect"]:
             for lat, lon in linea:
                 latitudes.append(lat)
                 longitudes.append(lon)
@@ -522,6 +527,17 @@ with col_mapa:
                 weight=3,
                 opacity=0.8,
                 tooltip="CABLE DERIVACIÓN"
+            ).add_to(m)
+
+        # --- CABLES PRECONECTORIZADOS (líneas finas punteadas) ---
+        for linea in data["cables_preconect"]:
+            folium.PolyLine(
+                locations=linea,
+                color="#ff66ff",      # violeta/rosa
+                weight=2,
+                opacity=0.9,
+                dash_array="4,4",
+                tooltip="CABLE PRECONECTORIZADO"
             ).add_to(m)
 
         # --- CAJAS HUB (rombos azules) ---
