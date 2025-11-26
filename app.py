@@ -338,6 +338,12 @@ if "trazas" not in st.session_state:
 
 col_form, col_mapa = st.columns([0.9, 1.1])
 
+if "map_view" not in st.session_state:
+    st.session_state.map_view = {
+        "lat": DEFAULT_LAT,
+        "lon": DEFAULT_LON,
+        "zoom": 15,   # podés ajustar el zoom inicial
+    }
 # -------- FORMULARIO LADO IZQUIERDO --------
 with col_form:
     st.subheader("1. Modo de interacción")
