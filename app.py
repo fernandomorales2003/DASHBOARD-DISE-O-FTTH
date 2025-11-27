@@ -609,26 +609,7 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             with r2c4:
                 st.metric("FOSC / Botellas", cant_fosc)
 
-            # Distribución por rangos de cables precon
-            st.markdown("#### Distribución de cables preconectorizados por longitud")
-            if cant_precon == 0:
-                st.info("No se encontraron cables preconectorizados en el diseño.")
-            else:
-                filas_precon_panel = []
-                for label, lo, hi in buckets_precon:
-                    filas_precon_panel.append({
-                        "Rango": label,
-                        "Cantidad de cables": precon_counts[label]
-                    })
-                if precon_mayor_300 > 0:
-                    filas_precon_panel.append({
-                        "Rango": "Mayor a 300 m",
-                        "Cantidad de cables": precon_mayor_300
-                    })
-
-                df_precon_panel = pd.DataFrame(filas_precon_panel)
-                st.dataframe(df_precon_panel, use_container_width=True, hide_index=True)
-
+            # ------------ MAPA ------------
             # Centro del mapa
             latitudes = []
             longitudes = []
@@ -785,6 +766,27 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             folium.LayerControl(collapsed=False).add_to(m)
 
             st_folium(m, width="100%", height=650, key="mapa_kmz")
+
+            # ------------ DISTRIBUCIÓN PRECON EN EXPANDER ------------
+            if cant_precon > 0:
+                with st.expander("Distribución de cables preconectorizados por longitud"):
+                    filas_precon_panel = []
+                    for label, lo, hi in buckets_precon:
+                        filas_precon_panel.append({
+                            "Rango": label,
+                            "Cantidad de cables": precon_counts[label]
+                        })
+                    if precon_mayor_300 > 0:
+                        filas_precon_panel.append({
+                            "Rango": "Mayor a 300 m",
+                            "Cantidad de cables": precon_mayor_300
+                        })
+
+                    df_precon_panel = pd.DataFrame(filas_precon_panel)
+                    st.dataframe(df_precon_panel, use_container_width=True, hide_index=True)
+            else:
+                with st.expander("Distribución de cables preconectorizados por longitud"):
+                    st.info("No se encontraron cables preconectorizados en el diseño.")
 
 
 # =========================
