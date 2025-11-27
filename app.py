@@ -648,10 +648,10 @@ with col_mapa:
                 number_of_sides=4,
                 radius=8,
                 rotation=0,
-                color="purple",
+                color="white",
                 weight=2,
                 fill=True,
-                fill_color="yellow",
+                fill_color="white",
                 fill_opacity=0.9,
                 popup=f"FOSC / BOTELLA: {bot['name']}"
             ).add_to(m)
