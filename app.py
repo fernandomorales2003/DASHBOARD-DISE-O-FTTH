@@ -502,7 +502,8 @@ El sistema dibuja automáticamente:
 if "kmz_data" not in st.session_state:
     st.session_state.kmz_data = None
 
-col_kmz, col_mapa = st.columns([0.9, 1.1])
+# 👉 Cambio a 30% / 70%
+col_kmz, col_mapa = st.columns([0.3, 0.7])
 
 with col_kmz:
     st.subheader("1. Cargar archivo KMZ")
@@ -684,7 +685,8 @@ with col_mapa:
         # Control de capas para encender/apagar
         folium.LayerControl(collapsed=False).add_to(m)
 
-        st_folium(m, width="100%", height=550, key="mapa_kmz")
+        # 👉 Mapa más alto
+        st_folium(m, width="100%", height=650, key="mapa_kmz")
 
 # -------- RESUMEN TABULAR --------
 st.subheader("3. Resumen de elementos del diseño (KMZ)")
