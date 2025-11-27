@@ -651,7 +651,7 @@ with col_mapa:
                 color="purple",
                 weight=2,
                 fill=True,
-                fill_color="purple",
+                fill_color="yellow",
                 fill_opacity=0.9,
                 popup=f"FOSC / BOTELLA: {bot['name']}"
             ).add_to(m)
