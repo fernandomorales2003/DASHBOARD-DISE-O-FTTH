@@ -16,43 +16,12 @@ st.set_page_config(
 # =========================
 # ESTILOS GLOBALES (UX / UI)
 # =========================
+# Dejamos el fondo de Streamlit por defecto (claro).
+# Solo ajustamos los gráficos para que no pongan fondo gris.
 
 st.markdown(
     """
 <style>
-/* Fondo general oscuro tipo dashboard */
-[data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at top left, #111827, #020617);
-    color: #e5e7eb;
-}
-
-/* Ajuste de padding general */
-.block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-}
-
-/* Títulos */
-h1, h2, h3, h4 {
-    color: #f9fafb;
-}
-
-/* Métricas más limpias */
-[data-testid="stMetricValue"] {
-    color: #e5e7eb;
-    font-weight: 700;
-}
-[data-testid="stMetricLabel"] {
-    color: #9ca3af;
-}
-
-/* Tablas: encabezado más marcado */
-[data-testid="stDataFrame"] table thead tr th {
-    background-color: #020617;
-    color: #e5e7eb;
-}
-
-/* Quitar borde blanco de los gráficos embebidos */
 .js-plotly-plot .plotly {
     background-color: rgba(0, 0, 0, 0) !important;
 }
@@ -147,21 +116,21 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         y=-0.05,
         text=f"{d_olt_nap:.2f} km",
         showarrow=False,
-        font=dict(size=10, color="#e5e7eb")
+        font=dict(size=10)
     )
     fig.add_annotation(
         x=(x_nap + x_cto) / 2,
         y=-0.05,
         text=f"{d_nap_cto:.2f} km",
         showarrow=False,
-        font=dict(size=10, color="#e5e7eb")
+        font=dict(size=10)
     )
     fig.add_annotation(
         x=(x_cto + x_ont) / 2,
         y=-0.05,
         text=f"{d_cto_ont:.2f} km",
         showarrow=False,
-        font=dict(size=10, color="#e5e7eb")
+        font=dict(size=10)
     )
 
     fig.update_layout(
@@ -172,8 +141,7 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         margin=dict(l=20, r=20, t=50, b=20),
         height=350,
         plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#e5e7eb")
+        paper_bgcolor="rgba(0,0,0,0)"
     )
 
     return fig
@@ -349,6 +317,7 @@ def parsear_kmz_ftth(file_obj):
                 coords_elem = line.find("k:coordinates", ns)
                 coords_list = parse_coordinates(get_text(coords_elem))
                 if coords_list:
+                    # Clasificación flexible + fallback
                     if "CABLES TRONCALES" in p or "TRONCAL" in p:
                         data["cables_troncales"].append({
                             "name": pm_name,
@@ -361,6 +330,12 @@ def parsear_kmz_ftth(file_obj):
                         })
                     elif "CABLES PRECONECTORIZADOS" in p or "PRECO" in p:
                         data["cables_preconect"].append({
+                            "name": pm_name,
+                            "coords": coords_list
+                        })
+                    else:
+                        # Si no matchea nada, al menos lo dibujamos como troncal
+                        data["cables_troncales"].append({
                             "name": pm_name,
                             "coords": coords_list
                         })
@@ -589,6 +564,25 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             cant_nap = len(data["cajas_nap"])
             cant_fosc = len(data["botellas"])
 
+            # Pequeño resumen arriba del mapa
+            r1c1, r1c2, r1c3 = st.columns(3)
+            with r1c1:
+                st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
+            with r1c2:
+                st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
+            with r1c3:
+                st.metric("Cable precon (m)", f"{total_precon_m:.0f}")
+
+            r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+            with r2c1:
+                st.metric("Nodos", cant_nodo)
+            with r2c2:
+                st.metric("Cajas HUB", cant_hub)
+            with r2c3:
+                st.metric("Cajas NAP", cant_nap)
+            with r2c4:
+                st.metric("FOSC / Botellas", cant_fosc)
+
             # Centro del mapa
             latitudes = []
             longitudes = []
@@ -743,58 +737,6 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
 
             # Control de capas
             folium.LayerControl(collapsed=False).add_to(m)
-
-            # Panel flotante de KPIs sobre el mapa
-            panel_html = f"""
-            <div style="
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                z-index: 9999;
-                background-color: rgba(15,23,42,0.92);
-                padding: 10px 14px;
-                border-radius: 12px;
-                border: 1px solid rgba(148,163,184,0.6);
-                color: #e5e7eb;
-                font-size: 11px;
-                min-width: 200px;
-            ">
-                <div style="font-weight:700; font-size:12px; margin-bottom:4px;">Totales del diseño</div>
-                <div>Troncal: <b>{total_troncal_m:.0f} m</b></div>
-                <div>Derivación: <b>{total_deriv_m:.0f} m</b></div>
-                <div>Precon: <b>{total_precon_m:.0f} m</b></div>
-                <div style="margin-top:4px;">
-                    HUB: <b>{cant_hub}</b> · NAP: <b>{cant_nap}</b> · FOSC: <b>{cant_fosc}</b>
-                </div>
-            </div>
-            """
-            m.get_root().html.add_child(Element(panel_html))
-
-            # Leyenda flotante
-            legend_html = """
-            <div style="
-                position: fixed;
-                bottom: 10px;
-                left: 10px;
-                z-index: 9998;
-                background-color: rgba(15,23,42,0.92);
-                padding: 8px 12px;
-                border-radius: 10px;
-                border: 1px solid rgba(148,163,184,0.6);
-                color: #e5e7eb;
-                font-size: 11px;
-            ">
-                <div style="font-weight:600; margin-bottom:4px;">Leyenda</div>
-                <div style="margin-bottom:2px;"><span style="color:#3b82f6;">■■</span> Cable troncal</div>
-                <div style="margin-bottom:2px;"><span style="color:#f59e0b;">■■</span> Cable derivación</div>
-                <div style="margin-bottom:2px;"><span style="color:#a855f7;">■■</span> Cable preconectorizado</div>
-                <div style="margin-bottom:2px;"><span style="color:#38bdf8;">◆</span> Cajas HUB</div>
-                <div style="margin-bottom:2px;"><span style="color:#22c55e;">▲</span> Cajas NAP</div>
-                <div style="margin-bottom:2px;"><span style="color:#e11d48;">■</span> FOSC / Botellas</div>
-                <div><span style="color:#f97316;">●</span> Nodos</div>
-            </div>
-            """
-            m.get_root().html.add_child(Element(legend_html))
 
             st_folium(m, width="100%", height=650, key="mapa_kmz")
 
@@ -972,8 +914,7 @@ Vista ejecutiva con totales de elementos y longitudes, más gráficos para enten
             yaxis_title="Longitud (m)",
             height=350,
             plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#e5e7eb")
+            paper_bgcolor="rgba(0,0,0,0)"
         )
         st.plotly_chart(fig_cables, use_container_width=True)
 
@@ -993,7 +934,6 @@ Vista ejecutiva con totales de elementos y longitudes, más gráficos para enten
             yaxis_title="Cantidad",
             height=350,
             plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#e5e7eb")
+            paper_bgcolor="rgba(0,0,0,0)"
         )
         st.plotly_chart(fig_elems, use_container_width=True)
