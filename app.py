@@ -187,15 +187,16 @@ def parsear_kmz_ftth(file_obj):
     """
     Parser de KMZ FTTH usando xml.etree (sin fastkml).
 
-    Estructura esperada (por nombre de carpetas):
+    Estructura esperada (por nombre de carpetas), nombres flexibles:
 
     FTTH-DISEÑO/
-      NODO
-      CABLES TRONCALES
-      CABLES DERIVACIONES
-      CABLES PRECONECTORIZADOS
-      CAJAS HUB
-      CAJAS NAP
+      NODO / NODOS
+      CABLES TRONCALES / TRONCAL
+      CABLES DERIVACIONES / DERIV
+      CABLES PRECONECTORIZADOS / PRECO
+      CAJAS HUB / HUB
+      CAJAS NAP / NAP
+      FOSC / BOTELLA (botellas de fibra óptica)
     """
     data = {
         "nodo": [],
@@ -203,7 +204,8 @@ def parsear_kmz_ftth(file_obj):
         "cables_derivaciones": [],
         "cables_preconect": [],   # lista de dicts {name, coords}
         "cajas_hub": [],
-        "cajas_nap": []
+        "cajas_nap": [],
+        "botellas": []            # lista de dicts {name, lat, lon} (FOSC / botellas)
     }
 
     # 1) Abrir KMZ (zip) y encontrar el primer .kml
@@ -252,7 +254,7 @@ def parsear_kmz_ftth(file_obj):
     def walk_folder(folder_elem, path=""):
         """
         Recorre recursivamente carpetas (<Folder>) y procesa <Placemark>.
-        path acumula los nombres de carpeta para clasificar: NODO, CAJAS HUB, etc.
+        path acumula los nombres de carpeta para clasificar: NODO, CAJAS HUB, FOSC, etc.
         """
         name_elem = folder_elem.find("k:name", ns)
         folder_name = get_text(name_elem)
@@ -273,11 +275,17 @@ def parsear_kmz_ftth(file_obj):
                     lat, lon = coords_list[0]
                     punto = {"name": pm_name, "lat": lat, "lon": lon}
 
-                    if "CAJAS NAP" in p:
+                    # Cajas NAP
+                    if "CAJAS NAP" in p or p.endswith("/NAP") or "/NAP/" in p:
                         data["cajas_nap"].append(punto)
-                    elif "CAJAS HUB" in p:
+                    # Cajas HUB
+                    elif "CAJAS HUB" in p or p.endswith("/HUB") or "/HUB/" in p:
                         data["cajas_hub"].append(punto)
-                    elif "/NODO" in p or p.startswith("NODO") or " NODO" in p:
+                    # FOSC / Botellas
+                    elif "FOSC" in p or "BOTELLA" in p:
+                        data["botellas"].append(punto)
+                    # Nodo
+                    elif "/NODO" in p or p.startswith("NODO") or " NODO" in p or p.endswith("/NODOS"):
                         data["nodo"].append(punto)
                     else:
                         # fallback: nodo genérico
@@ -290,11 +298,11 @@ def parsear_kmz_ftth(file_obj):
                 coords_elem = line.find("k:coordinates", ns)
                 coords_list = parse_coordinates(get_text(coords_elem))
                 if coords_list:
-                    if "CABLES TRONCALES" in p:
+                    if "CABLES TRONCALES" in p or "TRONCAL" in p:
                         data["cables_troncales"].append(coords_list)
-                    elif "CABLES DERIVACIONES" in p:
+                    elif "CABLES DERIVACIONES" in p or "DERIV" in p:
                         data["cables_derivaciones"].append(coords_list)
-                    elif "CABLES PRECONECTORIZADOS" in p:
+                    elif "CABLES PRECONECTORIZADOS" in p or "PRECO" in p:
                         # guardamos nombre + coords para poder calcular distancia y NAP
                         data["cables_preconect"].append({
                             "name": pm_name,
@@ -462,15 +470,16 @@ st.header("Módulo 2 — Visualización de diseño FTTH desde archivo KMZ")
 
 st.markdown(
     """
-Subí un archivo **KMZ** con la siguiente estructura de carpetas:
+Subí un archivo **KMZ** con estructura de carpetas tipo:
 
 `FTTH-DISEÑO/`
-- `NODO`
-- `CABLES TRONCALES`
-- `CABLES DERIVACIONES`
-- `CABLES PRECONECTORIZADOS`
-- `CAJAS HUB`
-- `CAJAS NAP`
+- `NODO` / `NODOS`
+- `CABLES TRONCALES` / `TRONCAL`
+- `CABLES DERIVACIONES` / `DERIV`
+- `CABLES PRECONECTORIZADOS` / `PRECO`
+- `CAJAS HUB` / `HUB`
+- `CAJAS NAP` / `NAP`
+- `FOSC` / `BOTELLA` (botellas de FO)
 
 El sistema dibuja automáticamente:
 
@@ -480,6 +489,7 @@ El sistema dibuja automáticamente:
 - Cables preconectorizados
 - Cajas HUB
 - Cajas NAP
+- FOSC / Botellas de fibra
 """
 )
 
@@ -518,7 +528,7 @@ with col_mapa:
         latitudes = []
         longitudes = []
 
-        for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"]:
+        for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
             latitudes.append(p["lat"])
             longitudes.append(p["lon"])
 
@@ -631,6 +641,21 @@ with col_mapa:
                 popup=f"CAJA NAP: {nap['name']}"
             ).add_to(m)
 
+        # --- FOSC / BOTELLAS (rectángulo morado) ---
+        for bot in data["botellas"]:
+            folium.RegularPolygonMarker(
+                location=[bot["lat"], bot["lon"]],
+                number_of_sides=4,
+                radius=8,
+                rotation=0,
+                color="purple",
+                weight=2,
+                fill=True,
+                fill_color="purple",
+                fill_opacity=0.9,
+                popup=f"FOSC / BOTELLA: {bot['name']}"
+            ).add_to(m)
+
         st_folium(m, width="100%", height=550, key="mapa_kmz")
 
 # -------- RESUMEN TABULAR --------
@@ -666,6 +691,13 @@ else:
             st.dataframe(df_nap, use_container_width=True, hide_index=True)
         else:
             st.write("Sin cajas NAP.")
+
+    st.markdown("**FOSC / Botellas de fibra óptica**")
+    if data["botellas"]:
+        df_bot = pd.DataFrame(data["botellas"])
+        st.dataframe(df_bot, use_container_width=True, hide_index=True)
+    else:
+        st.write("Sin FOSC / Botellas definidas.")
 
     # -------- TABLA DE CABLES PRECONECTORIZADOS --------
     st.markdown("### Cables preconectorizados (detalle)")
