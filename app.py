@@ -610,7 +610,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
             with r2c4:
                 st.metric("FOSC / Botellas", cant_fosc)
 
-            # -------- SELECTORES DE QUÉ CABLES MOSTRAR --------
+            # -------- SELECTORES DE QUÉ CABLES Y CAPAS MOSTRAR --------
             nombres_troncales = [c["name"] for c in data["cables_troncales"]]
             nombres_deriv = [c["name"] for c in data["cables_derivaciones"]]
 
@@ -629,6 +629,19 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     default=nombres_deriv,
                     key="sel_deriv"
                 )
+
+            with st.expander("Capas visibles"):
+                cvis1, cvis2, cvis3 = st.columns(3)
+                with cvis1:
+                    show_nodos = st.checkbox("Nodos", True)
+                    show_hub = st.checkbox("Cajas HUB", True)
+                    show_nap = st.checkbox("Cajas NAP", True)
+                with cvis2:
+                    show_fosc = st.checkbox("FOSC / Botellas", True)
+                    show_troncales = st.checkbox("Troncales", True)
+                with cvis3:
+                    show_deriv = st.checkbox("Derivaciones", True)
+                    show_precon = st.checkbox("Preconectorizados", True)
 
             # -------- CENTRO DEL MAPA (GENERAL) --------
             latitudes = []
@@ -675,123 +688,154 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
             """
             m.get_root().header.add_child(Element(css))
 
-            # ========= CAPAS BASE (POCOS ITEMS EN EL MENÚ) =========
-            fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
-            fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
-            fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
-            fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
-            fg_troncales = folium.FeatureGroup(name="Cables troncales (seleccionados)", show=True)
-            fg_deriv = folium.FeatureGroup(name="Cables derivación (seleccionados)", show=True)
-            fg_precon = folium.FeatureGroup(name="Cables preconectorizados (todos)", show=True)
+            # ========= CAPAS BASE =========
+            if show_nodos:
+                fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
+                fg_nodo.add_to(m)
+            else:
+                fg_nodo = None
 
-            fg_nodo.add_to(m)
-            fg_hub.add_to(m)
-            fg_nap.add_to(m)
-            fg_fosc.add_to(m)
-            fg_troncales.add_to(m)
-            fg_deriv.add_to(m)
-            fg_precon.add_to(m)
+            if show_hub:
+                fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
+                fg_hub.add_to(m)
+            else:
+                fg_hub = None
+
+            if show_nap:
+                fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
+                fg_nap.add_to(m)
+            else:
+                fg_nap = None
+
+            if show_fosc:
+                fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
+                fg_fosc.add_to(m)
+            else:
+                fg_fosc = None
+
+            if show_troncales:
+                fg_troncales = folium.FeatureGroup(name="Cables troncales (seleccionados)", show=True)
+                fg_troncales.add_to(m)
+            else:
+                fg_troncales = None
+
+            if show_deriv:
+                fg_deriv = folium.FeatureGroup(name="Cables derivación (seleccionados)", show=True)
+                fg_deriv.add_to(m)
+            else:
+                fg_deriv = None
+
+            if show_precon:
+                fg_precon = folium.FeatureGroup(name="Cables preconectorizados (todos)", show=True)
+                fg_precon.add_to(m)
+            else:
+                fg_precon = None
 
             # ----- NODOS -----
-            for nodo in data["nodo"]:
-                folium.CircleMarker(
-                    location=[nodo["lat"], nodo["lon"]],
-                    radius=9,
-                    color="#f97316",
-                    fill=True,
-                    fill_color="#f97316",
-                    fill_opacity=0.9,
-                    popup=f"NODO: {nodo['name']}"
-                ).add_to(fg_nodo)
+            if fg_nodo is not None:
+                for nodo in data["nodo"]:
+                    folium.CircleMarker(
+                        location=[nodo["lat"], nodo["lon"]],
+                        radius=9,
+                        color="#f97316",
+                        fill=True,
+                        fill_color="#f97316",
+                        fill_opacity=0.9,
+                        popup=f"NODO: {nodo['name']}"
+                    ).add_to(fg_nodo)
 
             # ========= CABLES TRONCALES (solo los seleccionados) =========
-            for cable in data["cables_troncales"]:
-                if cable["name"] not in troncales_sel:
-                    continue
+            if fg_troncales is not None:
+                for cable in data["cables_troncales"]:
+                    if cable["name"] not in troncales_sel:
+                        continue
 
-                folium.PolyLine(
-                    locations=cable["coords"],
-                    color="#3b82f6",
-                    weight=5,
-                    opacity=0.9,
-                    tooltip=f"Troncal: {cable['name']}",
-                    popup=f"Cable troncal: {cable['name']}"
-                ).add_to(fg_troncales)
+                    folium.PolyLine(
+                        locations=cable["coords"],
+                        color="#3b82f6",
+                        weight=5,
+                        opacity=0.9,
+                        tooltip=f"Troncal: {cable['name']}",
+                        popup=f"Cable troncal: {cable['name']}"
+                    ).add_to(fg_troncales)
 
             # ========= CABLES DERIVACIÓN (solo los seleccionados) =========
-            for cable in data["cables_derivaciones"]:
-                if cable["name"] not in deriv_sel:
-                    continue
+            if fg_deriv is not None:
+                for cable in data["cables_derivaciones"]:
+                    if cable["name"] not in deriv_sel:
+                        continue
 
-                folium.PolyLine(
-                    locations=cable["coords"],
-                    color="#f59e0b",
-                    weight=3,
-                    opacity=0.8,
-                    tooltip=f"Derivación: {cable['name']}",
-                    popup=f"Cable derivación: {cable['name']}"
-                ).add_to(fg_deriv)
+                    folium.PolyLine(
+                        locations=cable["coords"],
+                        color="#f59e0b",
+                        weight=3,
+                        opacity=0.8,
+                        tooltip=f"Derivación: {cable['name']}",
+                        popup=f"Cable derivación: {cable['name']}"
+                    ).add_to(fg_deriv)
 
             # ========= CABLES PRECONECTORIZADOS (todos juntos) =========
-            for cable in data["cables_preconect"]:
-                folium.PolyLine(
-                    locations=cable["coords"],
-                    color="#a855f7",
-                    weight=2,
-                    opacity=0.9,
-                    dash_array="4,4",
-                    tooltip=f"Precon: {cable['name']}",
-                    popup=f"Cable preconectorizado: {cable['name']}"
-                ).add_to(fg_precon)
+            if fg_precon is not None:
+                for cable in data["cables_preconect"]:
+                    folium.PolyLine(
+                        locations=cable["coords"],
+                        color="#a855f7",
+                        weight=2,
+                        opacity=0.9,
+                        dash_array="4,4",
+                        tooltip=f"Precon: {cable['name']}",
+                        popup=f"Cable preconectorizado: {cable['name']}"
+                    ).add_to(fg_precon)
 
             # ========= CAJAS HUB =========
-            for hub in data["cajas_hub"]:
-                folium.RegularPolygonMarker(
-                    location=[hub["lat"], hub["lon"]],
-                    number_of_sides=4,
-                    radius=10,
-                    rotation=45,
-                    color="#38bdf8",
-                    weight=2,
-                    fill=True,
-                    fill_color="#38bdf8",
-                    fill_opacity=0.9,
-                    popup=f"CAJA HUB: {hub['name']}"
-                ).add_to(fg_hub)
+            if fg_hub is not None:
+                for hub in data["cajas_hub"]:
+                    folium.RegularPolygonMarker(
+                        location=[hub["lat"], hub["lon"]],
+                        number_of_sides=4,
+                        radius=10,
+                        rotation=45,
+                        color="#38bdf8",
+                        weight=2,
+                        fill=True,
+                        fill_color="#38bdf8",
+                        fill_opacity=0.9,
+                        popup=f"CAJA HUB: {hub['name']}"
+                    ).add_to(fg_hub)
 
             # ========= CAJAS NAP =========
-            for nap in data["cajas_nap"]:
-                folium.RegularPolygonMarker(
-                    location=[nap["lat"], nap["lon"]],
-                    number_of_sides=3,
-                    radius=9,
-                    rotation=0,
-                    color="#22c55e",
-                    weight=2,
-                    fill=True,
-                    fill_color="#22c55e",
-                    fill_opacity=0.9,
-                    popup=f"CAJA NAP: {nap['name']}"
-                ).add_to(fg_nap)
+            if fg_nap is not None:
+                for nap in data["cajas_nap"]:
+                    folium.RegularPolygonMarker(
+                        location=[nap["lat"], nap["lon"]],
+                        number_of_sides=3,
+                        radius=9,
+                        rotation=0,
+                        color="#22c55e",
+                        weight=2,
+                        fill=True,
+                        fill_color="#22c55e",
+                        fill_opacity=0.9,
+                        popup=f"CAJA NAP: {nap['name']}"
+                    ).add_to(fg_nap)
 
             # ========= FOSC / BOTELLAS =========
-            for bot in data["botellas"]:
-                folium.RegularPolygonMarker(
-                    location=[bot["lat"], bot["lon"]],
-                    number_of_sides=4,
-                    radius=8,
-                    rotation=0,
-                    color="#e11d48",
-                    weight=2,
-                    fill=True,
-                    fill_color="#e11d48",
-                    fill_opacity=0.9,
-                    popup=f"FOSC / BOTELLA: {bot['name']}"
-                ).add_to(fg_fosc)
+            if fg_fosc is not None:
+                for bot in data["botellas"]:
+                    folium.RegularPolygonMarker(
+                        location=[bot["lat"], bot["lon"]],
+                        number_of_sides=4,
+                        radius=8,
+                        rotation=0,
+                        color="#e11d48",
+                        weight=2,
+                        fill=True,
+                        fill_color="#e11d48",
+                        fill_opacity=0.9,
+                        popup=f"FOSC / BOTELLA: {bot['name']}"
+                    ).add_to(fg_fosc)
 
-            # ========= CONTROL DE CAPAS (POCAS CAPAS) =========
-            folium.LayerControl(collapsed=True).add_to(m)
-
+            # (Sin LayerControl para no pelear con el estado al recargar)
             st_folium(m, width="100%", height=650, key="mapa_kmz")
 
             # --------- DISTRIBUCIÓN PRECON EN EXPANDER ---------
