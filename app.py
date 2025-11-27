@@ -14,6 +14,54 @@ st.set_page_config(
 )
 
 # =========================
+# ESTILOS GLOBALES (UX / UI)
+# =========================
+
+st.markdown(
+    """
+<style>
+/* Fondo general oscuro tipo dashboard */
+[data-testid="stAppViewContainer"] {
+    background: radial-gradient(circle at top left, #111827, #020617);
+    color: #e5e7eb;
+}
+
+/* Ajuste de padding general */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+}
+
+/* Títulos */
+h1, h2, h3, h4 {
+    color: #f9fafb;
+}
+
+/* Métricas más limpias */
+[data-testid="stMetricValue"] {
+    color: #e5e7eb;
+    font-weight: 700;
+}
+[data-testid="stMetricLabel"] {
+    color: #9ca3af;
+}
+
+/* Tablas: encabezado más marcado */
+[data-testid="stDataFrame"] table thead tr th {
+    background-color: #020617;
+    color: #e5e7eb;
+}
+
+/* Quitar borde blanco de los gráficos embebidos */
+.js-plotly-plot .plotly {
+    background-color: rgba(0, 0, 0, 0) !important;
+}
+</style>
+""",
+    unsafe_allow_html=True
+)
+
+# =========================
 # FUNCIONES AUXILIARES — MÓDULO 1
 # =========================
 
@@ -90,7 +138,7 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         text=labels,
         textposition="top center",
         marker=dict(size=14),
-        line=dict(width=3)
+        line=dict(width=3, color="#4FB4CA")
     ))
 
     # Anotaciones de distancia
@@ -99,21 +147,21 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         y=-0.05,
         text=f"{d_olt_nap:.2f} km",
         showarrow=False,
-        font=dict(size=10)
+        font=dict(size=10, color="#e5e7eb")
     )
     fig.add_annotation(
         x=(x_nap + x_cto) / 2,
         y=-0.05,
         text=f"{d_nap_cto:.2f} km",
         showarrow=False,
-        font=dict(size=10)
+        font=dict(size=10, color="#e5e7eb")
     )
     fig.add_annotation(
         x=(x_cto + x_ont) / 2,
         y=-0.05,
         text=f"{d_cto_ont:.2f} km",
         showarrow=False,
-        font=dict(size=10)
+        font=dict(size=10, color="#e5e7eb")
     )
 
     fig.update_layout(
@@ -122,7 +170,10 @@ def crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont):
         yaxis_visible=False,
         yaxis_showticklabels=False,
         margin=dict(l=20, r=20, t=50, b=20),
-        height=350
+        height=350,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#e5e7eb")
     )
 
     return fig
@@ -142,7 +193,7 @@ def distancia_haversine_km(lat1, lon1, lat2, lon2):
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
 
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
@@ -205,7 +256,7 @@ def parsear_kmz_ftth(file_obj):
         "cables_preconect": [],      # lista de dicts {name, coords}
         "cajas_hub": [],
         "cajas_nap": [],
-        "botellas": []               # lista de dicts {name, lat, lon} (FOSC / botellas)
+        "botellas": []               # lista de dicts {name, lat, lon}
     }
 
     # 1) Abrir KMZ (zip) y encontrar el primer .kml
@@ -326,211 +377,447 @@ def parsear_kmz_ftth(file_obj):
 
 
 # =========================
-# MÓDULO 1 — MAPA LÓGICO + PRESUPUESTO ÓPTICO
+# ESTADO KMZ
 # =========================
 
-st.title("Módulo Ingeniería FTTH — Mapa + Presupuesto Óptico + Diseño")
-
-st.markdown(
-    """
-### Parte 1 — Mapa lógico + Presupuesto óptico
-
-Esta primera sección integra:
-
-- Un **mapa lógico FTTH** (OLT → NAP → CTO → ONT).
-- El **presupuesto óptico completo** del enlace hasta el cliente.
-"""
-)
-
-col_izq, col_der = st.columns([1.1, 1])
-
-with col_izq:
-    st.subheader("1. Configuración del enlace y mapa FTTH")
-
-    st.markdown("#### Distancias por tramo (km)")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        d_olt_nap = st.number_input("OLT → NAP", min_value=0.0, value=3.0, step=0.1)
-    with c2:
-        d_nap_cto = st.number_input("NAP → CTO", min_value=0.0, value=0.8, step=0.1)
-    with c3:
-        d_cto_ont = st.number_input("CTO → ONT", min_value=0.0, value=0.15, step=0.05)
-
-    dist_total = d_olt_nap + d_nap_cto + d_cto_ont
-    st.markdown(f"**Distancia total del enlace:** `{dist_total:.2f} km`")
-
-    fig_mapa = crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont)
-    st.plotly_chart(fig_mapa, use_container_width=True)
-
-    st.markdown("#### Resumen de tramos")
-    df_tramos = pd.DataFrame({
-        "Tramo": ["OLT → NAP", "NAP → CTO", "CTO → ONT"],
-        "Distancia (km)": [d_olt_nap, d_nap_cto, d_cto_ont]
-    })
-    st.dataframe(df_tramos, use_container_width=True, hide_index=True)
-
-with col_der:
-    st.subheader("2. Presupuesto óptico del enlace")
-
-    st.markdown("#### Parámetros generales")
-    c1, c2 = st.columns(2)
-    with c1:
-        pot_olt_dbm = st.number_input("Potencia OLT (dBm)", value=3.0, step=0.5)
-    with c2:
-        sens_ont_dbm = st.number_input("Sensibilidad mínima ONT (dBm)", value=-27.0, step=0.5)
-
-    st.markdown("#### Fibra óptica")
-    c3, c4 = st.columns(2)
-    with c3:
-        atenuacion_db_km = st.number_input("Atenuación fibra (dB/km)", value=0.21, step=0.01)
-    with c4:
-        st.write("")
-
-    st.markdown("#### Empalmes y conectores")
-    c5, c6 = st.columns(2)
-    with c5:
-        n_empalmes = st.number_input("Cantidad de empalmes", min_value=0, value=8, step=1)
-        n_conectores = st.number_input("Cantidad de conectores", min_value=0, value=6, step=1)
-    with c6:
-        perd_empalme_db = st.number_input("Pérdida por empalme (dB)", value=0.05, step=0.01)
-        perd_conector_db = st.number_input("Pérdida por conector (dB)", value=0.25, step=0.01)
-
-    st.markdown("#### Splitters (PON)")
-    opciones_splitter = {
-        "Sin splitter": 0.0,
-        "1:2 (≈ 3,5 dB)": 3.5,
-        "1:4 (≈ 7,2 dB)": 7.2,
-        "1:8 (≈ 10,5 dB)": 10.5,
-        "1:16 (≈ 13,5 dB)": 13.5,
-        "1:32 (≈ 17 dB)": 17.0,
-        "1:64 (≈ 20,5 dB)": 20.5
-    }
-
-    c7, c8 = st.columns(2)
-    with c7:
-        splitter_nap = st.selectbox("Splitter en NAP", list(opciones_splitter.keys()), index=2)
-    with c8:
-        splitter_cto = st.selectbox("Splitter en CTO", list(opciones_splitter.keys()), index=0)
-
-    perd_splitter_nap_db = opciones_splitter[splitter_nap]
-    perd_splitter_cto_db = opciones_splitter[splitter_cto]
-
-    st.markdown("---")
-    st.markdown("#### Resultados del presupuesto óptico")
-
-    resultados = calcular_presupuesto(
-        dist_total_km=dist_total,
-        pot_olt_dbm=pot_olt_dbm,
-        sens_ont_dbm=sens_ont_dbm,
-        atenuacion_db_km=atenuacion_db_km,
-        n_empalmes=n_empalmes,
-        n_conectores=n_conectores,
-        perd_empalme_db=perd_empalme_db,
-        perd_conector_db=perd_conector_db,
-        perd_splitter_nap_db=perd_splitter_nap_db,
-        perd_splitter_cto_db=perd_splitter_cto_db
-    )
-
-    c9, c10 = st.columns(2)
-    with c9:
-        st.metric("Pérdida total (dB)", f"{resultados['perd_total']:.2f}")
-        st.metric("Potencia estimada en ONT (dBm)", f"{resultados['pot_ont']:.2f}")
-    with c10:
-        st.metric("Margen disponible (dB)", f"{resultados['margen']:.2f}")
-        st.markdown(
-            f"<div style='padding:0.5rem 1rem; border-radius:8px; "
-            f"background-color:{resultados['color']}; color:white; text-align:center; font-weight:bold;'>"
-            f"ESTADO: {resultados['estado']}</div>",
-            unsafe_allow_html=True
-        )
-
-    st.markdown("#### Detalle de pérdidas")
-    df_perdidas = pd.DataFrame({
-        "Concepto": [
-            "Fibra",
-            "Empalmes",
-            "Conectores",
-            "Splitters NAP",
-            "Splitters CTO"
-        ],
-        "Pérdida (dB)": [
-            resultados["perd_fibra"],
-            resultados["perd_empalmes"],
-            resultados["perd_conectores"],
-            perd_splitter_nap_db,
-            perd_splitter_cto_db
-        ]
-    })
-    st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
-
-    st.info(resultados["comentario"])
-
-
-# =========================
-# MÓDULO 2 — VISUALIZACIÓN DE FTTH DESDE KMZ
-# =========================
-
-st.markdown("---")
-st.header("Módulo 2 — Visualización de diseño FTTH desde archivo KMZ")
-
-st.markdown(
-    """
-Subí un archivo **KMZ** con estructura de carpetas tipo:
-
-`FTTH-DISEÑO/`
-- `NODO` / `NODOS`
-- `CABLES TRONCALES` / `TRONCAL`
-- `CABLES DERIVACIONES` / `DERIV`
-- `CABLES PRECONECTORIZADOS` / `PRECO`
-- `CAJAS HUB` / `HUB`
-- `CAJAS NAP` / `NAP`
-- `FOSC` / `BOTELLA` (botellas de FO)
-
-El sistema dibuja automáticamente:
-
-- NODO
-- Cables troncales
-- Cables de derivación
-- Cables preconectorizados
-- Cajas HUB
-- Cajas NAP
-- FOSC / Botellas de fibra
-"""
-)
-
-# Estado para guardar el último diseño cargado
 if "kmz_data" not in st.session_state:
     st.session_state.kmz_data = None
 
-# 30% / 70% entre KMZ y mapa
-col_kmz, col_mapa = st.columns([0.3, 0.7])
+# =========================
+# TÍTULO GENERAL + TABS
+# =========================
 
-with col_kmz:
-    st.subheader("1. Cargar archivo KMZ")
+st.title("Módulo Ingeniería FTTH — Mapa + Presupuesto + Diseño")
 
-    kmz_file = st.file_uploader("Seleccioná un archivo KMZ", type=["kmz"])
+tab1, tab2, tab3 = st.tabs([
+    "Ingeniería & Presupuesto óptico",
+    "Mapa FTTH (KMZ)",
+    "Estadísticas & Resumen"
+])
 
-    if kmz_file is not None:
-        try:
-            st.session_state.kmz_data = parsear_kmz_ftth(kmz_file)
-            st.success("KMZ cargado y procesado correctamente.")
-        except Exception as e:
+# =========================
+# TAB 1 — INGENIERÍA & PRESUPUESTO
+# =========================
+
+with tab1:
+    st.markdown(
+        """
+### Configuración del enlace y presupuesto óptico
+
+Ajustá los parámetros del enlace y visualizá el mapa lógico junto con el presupuesto óptico completo hasta el cliente.
+"""
+    )
+
+    col_izq, col_der = st.columns([1.1, 1])
+
+    with col_izq:
+        st.subheader("Mapa lógico FTTH")
+
+        st.markdown("#### Distancias por tramo (km)")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            d_olt_nap = st.number_input("OLT → NAP", min_value=0.0, value=3.0, step=0.1)
+        with c2:
+            d_nap_cto = st.number_input("NAP → CTO", min_value=0.0, value=0.8, step=0.1)
+        with c3:
+            d_cto_ont = st.number_input("CTO → ONT", min_value=0.0, value=0.15, step=0.05)
+
+        dist_total = d_olt_nap + d_nap_cto + d_cto_ont
+        st.markdown(f"**Distancia total del enlace:** `{dist_total:.2f} km`")
+
+        fig_mapa = crear_mapa_ftth(d_olt_nap, d_nap_cto, d_cto_ont)
+        st.plotly_chart(fig_mapa, use_container_width=True)
+
+        st.markdown("#### Resumen de tramos")
+        df_tramos = pd.DataFrame({
+            "Tramo": ["OLT → NAP", "NAP → CTO", "CTO → ONT"],
+            "Distancia (km)": [d_olt_nap, d_nap_cto, d_cto_ont]
+        })
+        st.dataframe(df_tramos, use_container_width=True, hide_index=True)
+
+    with col_der:
+        st.subheader("Presupuesto óptico del enlace")
+
+        st.markdown("#### Parámetros generales")
+        c1, c2 = st.columns(2)
+        with c1:
+            pot_olt_dbm = st.number_input("Potencia OLT (dBm)", value=3.0, step=0.5)
+        with c2:
+            sens_ont_dbm = st.number_input("Sensibilidad mínima ONT (dBm)", value=-27.0, step=0.5)
+
+        st.markdown("#### Fibra óptica")
+        c3, c4 = st.columns(2)
+        with c3:
+            atenuacion_db_km = st.number_input("Atenuación fibra (dB/km)", value=0.21, step=0.01)
+        with c4:
+            st.write("")
+
+        st.markdown("#### Empalmes y conectores")
+        c5, c6 = st.columns(2)
+        with c5:
+            n_empalmes = st.number_input("Cantidad de empalmes", min_value=0, value=8, step=1)
+            n_conectores = st.number_input("Cantidad de conectores", min_value=0, value=6, step=1)
+        with c6:
+            perd_empalme_db = st.number_input("Pérdida por empalme (dB)", value=0.05, step=0.01)
+            perd_conector_db = st.number_input("Pérdida por conector (dB)", value=0.25, step=0.01)
+
+        st.markdown("#### Splitters (PON)")
+        opciones_splitter = {
+            "Sin splitter": 0.0,
+            "1:2 (≈ 3,5 dB)": 3.5,
+            "1:4 (≈ 7,2 dB)": 7.2,
+            "1:8 (≈ 10,5 dB)": 10.5,
+            "1:16 (≈ 13,5 dB)": 13.5,
+            "1:32 (≈ 17 dB)": 17.0,
+            "1:64 (≈ 20,5 dB)": 20.5
+        }
+
+        c7, c8 = st.columns(2)
+        with c7:
+            splitter_nap = st.selectbox("Splitter en NAP", list(opciones_splitter.keys()), index=2)
+        with c8:
+            splitter_cto = st.selectbox("Splitter en CTO", list(opciones_splitter.keys()), index=0)
+
+        perd_splitter_nap_db = opciones_splitter[splitter_nap]
+        perd_splitter_cto_db = opciones_splitter[splitter_cto]
+
+        st.markdown("---")
+        st.markdown("#### Resultados del presupuesto óptico")
+
+        resultados = calcular_presupuesto(
+            dist_total_km=dist_total,
+            pot_olt_dbm=pot_olt_dbm,
+            sens_ont_dbm=sens_ont_dbm,
+            atenuacion_db_km=atenuacion_db_km,
+            n_empalmes=n_empalmes,
+            n_conectores=n_conectores,
+            perd_empalme_db=perd_empalme_db,
+            perd_conector_db=perd_conector_db,
+            perd_splitter_nap_db=perd_splitter_nap_db,
+            perd_splitter_cto_db=perd_splitter_cto_db
+        )
+
+        c9, c10 = st.columns(2)
+        with c9:
+            st.metric("Pérdida total (dB)", f"{resultados['perd_total']:.2f}")
+            st.metric("Potencia estimada en ONT (dBm)", f"{resultados['pot_ont']:.2f}")
+        with c10:
+            st.metric("Margen disponible (dB)", f"{resultados['margen']:.2f}")
+            st.markdown(
+                f"<div style='padding:0.5rem 1rem; border-radius:8px; "
+                f"background-color:{resultados['color']}; color:white; text-align:center; font-weight:bold;'>"
+                f"ESTADO: {resultados['estado']}</div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("#### Detalle de pérdidas")
+        df_perdidas = pd.DataFrame({
+            "Concepto": [
+                "Fibra",
+                "Empalmes",
+                "Conectores",
+                "Splitters NAP",
+                "Splitters CTO"
+            ],
+            "Pérdida (dB)": [
+                resultados["perd_fibra"],
+                resultados["perd_empalmes"],
+                resultados["perd_conectores"],
+                perd_splitter_nap_db,
+                perd_splitter_cto_db
+            ]
+        })
+        st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
+
+        st.info(resultados["comentario"])
+
+
+# =========================
+# TAB 2 — MAPA FTTH (KMZ)
+# =========================
+
+with tab2:
+    st.markdown(
+        """
+### Mapa FTTH desde archivo KMZ
+
+Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, derivaciones, cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
+"""
+    )
+
+    col_kmz, col_mapa = st.columns([0.3, 0.7])
+
+    with col_kmz:
+        st.subheader("Carga de diseño (KMZ)")
+
+        kmz_file = st.file_uploader("Seleccioná un archivo KMZ", type=["kmz"], key="kmz_uploader")
+
+        if kmz_file is not None:
+            try:
+                st.session_state.kmz_data = parsear_kmz_ftth(kmz_file)
+                st.success("KMZ cargado y procesado correctamente.")
+            except Exception as e:
+                st.session_state.kmz_data = None
+                st.error(f"Error al procesar el KMZ: {e}")
+
+        if st.button("🗑️ Limpiar diseño cargado", key="btn_clear_kmz"):
             st.session_state.kmz_data = None
-            st.error(f"Error al procesar el KMZ: {e}")
+            st.warning("Se limpió el diseño cargado.")
 
-    if st.button("🗑️ Limpiar diseño cargado"):
-        st.session_state.kmz_data = None
-        st.warning("Se limpió el diseño cargado.")
+    with col_mapa:
+        st.subheader("Panel de red FTTH")
 
-with col_mapa:
-    st.subheader("2. Mapa FTTH desde KMZ")
+        if not st.session_state.kmz_data:
+            st.info("Subí un KMZ válido para visualizar el diseño.")
+        else:
+            data = st.session_state.kmz_data
+
+            # Totales para panel y mapa
+            total_troncal_m = 0.0
+            total_deriv_m = 0.0
+            total_precon_m = 0.0
+
+            for cable in data["cables_troncales"]:
+                total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
+            for cable in data["cables_derivaciones"]:
+                total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
+            for cable in data["cables_preconect"]:
+                total_precon_m += longitud_total_km(cable["coords"]) * 1000.0
+
+            cant_nodo = len(data["nodo"])
+            cant_hub = len(data["cajas_hub"])
+            cant_nap = len(data["cajas_nap"])
+            cant_fosc = len(data["botellas"])
+
+            # Centro del mapa
+            latitudes = []
+            longitudes = []
+
+            for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
+                latitudes.append(p["lat"])
+                longitudes.append(p["lon"])
+
+            for cable in data["cables_troncales"] + data["cables_derivaciones"]:
+                for lat, lon in cable["coords"]:
+                    latitudes.append(lat)
+                    longitudes.append(lon)
+
+            for cable in data["cables_preconect"]:
+                for lat, lon in cable["coords"]:
+                    latitudes.append(lat)
+                    longitudes.append(lon)
+
+            if latitudes and longitudes:
+                center_lat = sum(latitudes) / len(latitudes)
+                center_lon = sum(longitudes) / len(longitudes)
+            else:
+                center_lat = -32.8894
+                center_lon = -68.8458
+
+            m = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=14,
+                tiles="CartoDB dark_matter"
+            )
+
+            # Cursor tipo mira
+            css = """
+            <style>
+            .leaflet-container {
+                cursor: crosshair !important;
+            }
+            .leaflet-interactive {
+                cursor: crosshair !important;
+            }
+            </style>
+            """
+            m.get_root().header.add_child(Element(css))
+
+            # FeatureGroups para capas
+            fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
+            fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
+            fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
+            fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
+            fg_troncales = folium.FeatureGroup(name="Cables troncales", show=True)
+            fg_deriv = folium.FeatureGroup(name="Cables derivación", show=True)
+            fg_precon = folium.FeatureGroup(name="Cables preconectorizados", show=True)
+
+            fg_nodo.add_to(m)
+            fg_hub.add_to(m)
+            fg_nap.add_to(m)
+            fg_fosc.add_to(m)
+            fg_troncales.add_to(m)
+            fg_deriv.add_to(m)
+            fg_precon.add_to(m)
+
+            # NODO
+            for nodo in data["nodo"]:
+                folium.CircleMarker(
+                    location=[nodo["lat"], nodo["lon"]],
+                    radius=9,
+                    color="#f97316",          # naranja fuerte
+                    fill=True,
+                    fill_color="#f97316",
+                    fill_opacity=0.9,
+                    popup=f"NODO: {nodo['name']}"
+                ).add_to(fg_nodo)
+
+            # CABLES TRONCALES
+            for cable in data["cables_troncales"]:
+                folium.PolyLine(
+                    locations=cable["coords"],
+                    color="#3b82f6",          # azul
+                    weight=5,
+                    opacity=0.9,
+                    tooltip=f"Troncal: {cable['name']}",
+                    popup=f"Cable troncal: {cable['name']}"
+                ).add_to(fg_troncales)
+
+            # CABLES DERIVACIONES
+            for cable in data["cables_derivaciones"]:
+                folium.PolyLine(
+                    locations=cable["coords"],
+                    color="#f59e0b",          # naranja
+                    weight=3,
+                    opacity=0.8,
+                    tooltip=f"Derivación: {cable['name']}",
+                    popup=f"Cable derivación: {cable['name']}"
+                ).add_to(fg_deriv)
+
+            # CABLES PRECONECTORIZADOS
+            for cable in data["cables_preconect"]:
+                folium.PolyLine(
+                    locations=cable["coords"],
+                    color="#a855f7",          # violeta
+                    weight=2,
+                    opacity=0.9,
+                    dash_array="4,4",
+                    tooltip=f"Precon: {cable['name']}",
+                    popup=f"Cable preconectorizado: {cable['name']}"
+                ).add_to(fg_precon)
+
+            # CAJAS HUB
+            for hub in data["cajas_hub"]:
+                folium.RegularPolygonMarker(
+                    location=[hub["lat"], hub["lon"]],
+                    number_of_sides=4,
+                    radius=10,
+                    rotation=45,
+                    color="#38bdf8",         # celeste
+                    weight=2,
+                    fill=True,
+                    fill_color="#38bdf8",
+                    fill_opacity=0.9,
+                    popup=f"CAJA HUB: {hub['name']}"
+                ).add_to(fg_hub)
+
+            # CAJAS NAP
+            for nap in data["cajas_nap"]:
+                folium.RegularPolygonMarker(
+                    location=[nap["lat"], nap["lon"]],
+                    number_of_sides=3,
+                    radius=9,
+                    rotation=0,
+                    color="#22c55e",         # verde
+                    weight=2,
+                    fill=True,
+                    fill_color="#22c55e",
+                    fill_opacity=0.9,
+                    popup=f"CAJA NAP: {nap['name']}"
+                ).add_to(fg_nap)
+
+            # FOSC / BOTELLAS
+            for bot in data["botellas"]:
+                folium.RegularPolygonMarker(
+                    location=[bot["lat"], bot["lon"]],
+                    number_of_sides=4,
+                    radius=8,
+                    rotation=0,
+                    color="#e11d48",         # magenta/rojo
+                    weight=2,
+                    fill=True,
+                    fill_color="#e11d48",
+                    fill_opacity=0.9,
+                    popup=f"FOSC / BOTELLA: {bot['name']}"
+                ).add_to(fg_fosc)
+
+            # Control de capas
+            folium.LayerControl(collapsed=False).add_to(m)
+
+            # Panel flotante de KPIs sobre el mapa
+            panel_html = f"""
+            <div style="
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                z-index: 9999;
+                background-color: rgba(15,23,42,0.92);
+                padding: 10px 14px;
+                border-radius: 12px;
+                border: 1px solid rgba(148,163,184,0.6);
+                color: #e5e7eb;
+                font-size: 11px;
+                min-width: 200px;
+            ">
+                <div style="font-weight:700; font-size:12px; margin-bottom:4px;">Totales del diseño</div>
+                <div>Troncal: <b>{total_troncal_m:.0f} m</b></div>
+                <div>Derivación: <b>{total_deriv_m:.0f} m</b></div>
+                <div>Precon: <b>{total_precon_m:.0f} m</b></div>
+                <div style="margin-top:4px;">
+                    HUB: <b>{cant_hub}</b> · NAP: <b>{cant_nap}</b> · FOSC: <b>{cant_fosc}</b>
+                </div>
+            </div>
+            """
+            m.get_root().html.add_child(Element(panel_html))
+
+            # Leyenda flotante
+            legend_html = """
+            <div style="
+                position: fixed;
+                bottom: 10px;
+                left: 10px;
+                z-index: 9998;
+                background-color: rgba(15,23,42,0.92);
+                padding: 8px 12px;
+                border-radius: 10px;
+                border: 1px solid rgba(148,163,184,0.6);
+                color: #e5e7eb;
+                font-size: 11px;
+            ">
+                <div style="font-weight:600; margin-bottom:4px;">Leyenda</div>
+                <div style="margin-bottom:2px;"><span style="color:#3b82f6;">■■</span> Cable troncal</div>
+                <div style="margin-bottom:2px;"><span style="color:#f59e0b;">■■</span> Cable derivación</div>
+                <div style="margin-bottom:2px;"><span style="color:#a855f7;">■■</span> Cable preconectorizado</div>
+                <div style="margin-bottom:2px;"><span style="color:#38bdf8;">◆</span> Cajas HUB</div>
+                <div style="margin-bottom:2px;"><span style="color:#22c55e;">▲</span> Cajas NAP</div>
+                <div style="margin-bottom:2px;"><span style="color:#e11d48;">■</span> FOSC / Botellas</div>
+                <div><span style="color:#f97316;">●</span> Nodos</div>
+            </div>
+            """
+            m.get_root().html.add_child(Element(legend_html))
+
+            st_folium(m, width="100%", height=650, key="mapa_kmz")
+
+
+# =========================
+# TAB 3 — ESTADÍSTICAS & RESUMEN
+# =========================
+
+with tab3:
+    st.markdown(
+        """
+### Resumen y estadísticas del diseño
+
+Vista ejecutiva con totales de elementos y longitudes, más gráficos para entender la composición de la red.
+"""
+    )
 
     if not st.session_state.kmz_data:
-        st.info("Subí un KMZ válido para visualizar el diseño.")
+        st.info("Subí un KMZ en la pestaña **Mapa FTTH (KMZ)** para ver el resumen y las estadísticas.")
     else:
         data = st.session_state.kmz_data
 
-        # ===== Panel de totales para el diseño =====
+        # Totales
         total_troncal_m = 0.0
         total_deriv_m = 0.0
         total_precon_m = 0.0
@@ -547,360 +834,166 @@ with col_mapa:
         cant_nap = len(data["cajas_nap"])
         cant_fosc = len(data["botellas"])
 
-        st.markdown("### Resumen general del diseño")
-        r1c1, r1c2, r1c3 = st.columns(3)
-        with r1c1:
-            st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
-        with r1c2:
-            st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
-        with r1c3:
-            st.metric("Cable preconectorizado (m)", f"{total_precon_m:.0f}")
+        # ---- Tabla de resumen única ----
+        st.markdown("### Resumen general por tipo de elemento")
 
-        r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-        with r2c1:
-            st.metric("Nodos", cant_nodo)
-        with r2c2:
-            st.metric("Cajas HUB", cant_hub)
-        with r2c3:
-            st.metric("Cajas NAP", cant_nap)
-        with r2c4:
-            st.metric("FOSC / Botellas", cant_fosc)
+        filas_resumen = [
+            {"Elemento": "Nodos", "Cantidad": cant_nodo, "Longitud total (m)": ""},
+            {"Elemento": "Cajas HUB", "Cantidad": cant_hub, "Longitud total (m)": ""},
+            {"Elemento": "Cajas NAP", "Cantidad": cant_nap, "Longitud total (m)": ""},
+            {"Elemento": "FOSC / Botellas", "Cantidad": cant_fosc, "Longitud total (m)": ""},
+            {
+                "Elemento": "Cables troncales",
+                "Cantidad": len(data["cables_troncales"]),
+                "Longitud total (m)": round(total_troncal_m, 1)
+            },
+            {
+                "Elemento": "Cables derivación",
+                "Cantidad": len(data["cables_derivaciones"]),
+                "Longitud total (m)": round(total_deriv_m, 1)
+            },
+            {
+                "Elemento": "Cables preconectorizados",
+                "Cantidad": len(data["cables_preconect"]),
+                "Longitud total (m)": round(total_precon_m, 1)
+            },
+        ]
 
-        # ===== Centro del mapa =====
-        latitudes = []
-        longitudes = []
+        df_resumen = pd.DataFrame(filas_resumen)
+        st.dataframe(df_resumen, use_container_width=True, hide_index=True)
 
-        for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
-            latitudes.append(p["lat"])
-            longitudes.append(p["lon"])
+        # ---- Detalle por tipo en expanders ----
+        st.markdown("### Detalle por tipo (opcional)")
 
-        for cable in data["cables_troncales"] + data["cables_derivaciones"]:
-            for lat, lon in cable["coords"]:
-                latitudes.append(lat)
-                longitudes.append(lon)
+        with st.expander("Detalle de nodos"):
+            if data["nodo"]:
+                df_nodo = pd.DataFrame(data["nodo"])
+                st.dataframe(df_nodo[["name"]], use_container_width=True, hide_index=True)
+            else:
+                st.write("Sin NODO definido.")
 
-        for cable in data["cables_preconect"]:
-            for lat, lon in cable["coords"]:
-                latitudes.append(lat)
-                longitudes.append(lon)
+        with st.expander("Detalle de cajas HUB"):
+            if data["cajas_hub"]:
+                df_hub = pd.DataFrame(data["cajas_hub"])
+                st.dataframe(df_hub[["name"]], use_container_width=True, hide_index=True)
+            else:
+                st.write("Sin cajas HUB.")
 
-        if latitudes and longitudes:
-            center_lat = sum(latitudes) / len(latitudes)
-            center_lon = sum(longitudes) / len(longitudes)
-        else:
-            center_lat = -32.8894
-            center_lon = -68.8458
+        with st.expander("Detalle de cajas NAP"):
+            if data["cajas_nap"]:
+                df_nap = pd.DataFrame(data["cajas_nap"])
+                st.dataframe(df_nap[["name"]], use_container_width=True, hide_index=True)
+            else:
+                st.write("Sin cajas NAP.")
 
-        m = folium.Map(
-            location=[center_lat, center_lon],
-            zoom_start=14,
-            tiles="CartoDB dark_matter"
+        with st.expander("Detalle de FOSC / Botellas"):
+            if data["botellas"]:
+                df_bot = pd.DataFrame(data["botellas"])
+                st.dataframe(df_bot[["name"]], use_container_width=True, hide_index=True)
+            else:
+                st.write("Sin FOSC / Botellas definidas.")
+
+        with st.expander("Detalle de cables troncales"):
+            if data["cables_troncales"]:
+                filas_tron = []
+                for cable in data["cables_troncales"]:
+                    long_m = longitud_total_km(cable["coords"]) * 1000.0
+                    filas_tron.append({
+                        "Cable": cable["name"],
+                        "Longitud (m)": round(long_m, 1)
+                    })
+                df_tron = pd.DataFrame(filas_tron)
+                st.dataframe(df_tron, use_container_width=True, hide_index=True)
+            else:
+                st.write("No hay cables troncales.")
+
+        with st.expander("Detalle de cables de derivación"):
+            if data["cables_derivaciones"]:
+                filas_der = []
+                for cable in data["cables_derivaciones"]:
+                    long_m = longitud_total_km(cable["coords"]) * 1000.0
+                    filas_der.append({
+                        "Cable": cable["name"],
+                        "Longitud (m)": round(long_m, 1)
+                    })
+                df_der = pd.DataFrame(filas_der)
+                st.dataframe(df_der, use_container_width=True, hide_index=True)
+            else:
+                st.write("No hay cables de derivación.")
+
+        with st.expander("Detalle de cables preconectorizados"):
+            if not data["cables_preconect"]:
+                st.write("No se encontraron CABLES PRECONECTORIZADOS en el KMZ.")
+            else:
+                filas_precon = []
+                for cable in data["cables_preconect"]:
+                    nombre_cable = cable["name"]
+                    coords = cable["coords"]
+                    long_km = longitud_total_km(coords)
+                    long_m = long_km * 1000.0
+
+                    # Tomamos el último punto como extremo hacia NAP
+                    lat_fin, lon_fin = coords[-1]
+                    nap_dest, dist_km = nap_mas_cercana(lat_fin, lon_fin, data["cajas_nap"])
+
+                    if nap_dest is not None:
+                        nombre_nap = nap_dest["name"]
+                    else:
+                        nombre_nap = "Sin NAP cercana"
+
+                    filas_precon.append({
+                        "Cable": nombre_cable,
+                        "NAP destino": nombre_nap,
+                        "Longitud (m)": round(long_m, 1)
+                    })
+
+                df_precon = pd.DataFrame(filas_precon)
+                st.dataframe(df_precon, use_container_width=True, hide_index=True)
+
+        # =========================
+        # GRÁFICOS (MÓDULO 3)
+        # =========================
+        st.markdown("---")
+        st.header("Estadísticas del diseño")
+
+        st.markdown("#### Longitud total de cable por tipo (m)")
+
+        fig_cables = go.Figure(
+            data=[
+                go.Bar(
+                    x=["Troncal", "Derivación", "Preconectorizado"],
+                    y=[total_troncal_m, total_deriv_m, total_precon_m],
+                    marker_color=["#3b82f6", "#f59e0b", "#a855f7"]
+                )
+            ]
         )
+        fig_cables.update_layout(
+            xaxis_title="Tipo de cable",
+            yaxis_title="Longitud (m)",
+            height=350,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e5e7eb")
+        )
+        st.plotly_chart(fig_cables, use_container_width=True)
 
-        # Cursor tipo mira
-        css = """
-        <style>
-        .leaflet-container {
-            cursor: crosshair !important;
-        }
-        .leaflet-interactive {
-            cursor: crosshair !important;
-        }
-        </style>
-        """
-        m.get_root().header.add_child(Element(css))
+        st.markdown("#### Cantidad de elementos por tipo")
 
-        # ---- FeatureGroups para poder apagar/encender capas ----
-        fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
-        fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
-        fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
-        fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
-        fg_troncales = folium.FeatureGroup(name="Cables troncales", show=True)
-        fg_deriv = folium.FeatureGroup(name="Cables derivación", show=True)
-        fg_precon = folium.FeatureGroup(name="Cables preconectorizados", show=True)
-
-        fg_nodo.add_to(m)
-        fg_hub.add_to(m)
-        fg_nap.add_to(m)
-        fg_fosc.add_to(m)
-        fg_troncales.add_to(m)
-        fg_deriv.add_to(m)
-        fg_precon.add_to(m)
-
-        # --- NODO (punto) ---
-        for nodo in data["nodo"]:
-            folium.CircleMarker(
-                location=[nodo["lat"], nodo["lon"]],
-                radius=9,
-                color="red",
-                fill=True,
-                fill_color="red",
-                fill_opacity=0.9,
-                popup=f"NODO: {nodo['name']}"
-            ).add_to(fg_nodo)
-
-        # --- CABLES TRONCALES (líneas gruesas, con nombre en popup) ---
-        for cable in data["cables_troncales"]:
-            folium.PolyLine(
-                locations=cable["coords"],
-                color="deepskyblue",
-                weight=5,
-                opacity=0.9,
-                tooltip=f"Troncal: {cable['name']}",
-                popup=f"Cable troncal: {cable['name']}"
-            ).add_to(fg_troncales)
-
-        # --- CABLES DERIVACIONES (líneas más finas, con nombre en popup) ---
-        for cable in data["cables_derivaciones"]:
-            folium.PolyLine(
-                locations=cable["coords"],
-                color="orange",
-                weight=3,
-                opacity=0.8,
-                tooltip=f"Derivación: {cable['name']}",
-                popup=f"Cable derivación: {cable['name']}"
-            ).add_to(fg_deriv)
-
-        # --- CABLES PRECONECTORIZADOS (líneas finas punteadas, con nombre en popup) ---
-        for cable in data["cables_preconect"]:
-            folium.PolyLine(
-                locations=cable["coords"],
-                color="#ff66ff",      # violeta/rosa
-                weight=2,
-                opacity=0.9,
-                dash_array="4,4",
-                tooltip=f"Precon: {cable['name']}",
-                popup=f"Cable preconectorizado: {cable['name']}"
-            ).add_to(fg_precon)
-
-        # --- CAJAS HUB (rombos azules) ---
-        for hub in data["cajas_hub"]:
-            folium.RegularPolygonMarker(
-                location=[hub["lat"], hub["lon"]],
-                number_of_sides=4,
-                radius=10,
-                rotation=45,
-                color="blue",
-                weight=2,
-                fill=True,
-                fill_color="blue",
-                fill_opacity=0.9,
-                popup=f"CAJA HUB: {hub['name']}"
-            ).add_to(fg_hub)
-
-        # --- CAJAS NAP (triángulos verdes) ---
-        for nap in data["cajas_nap"]:
-            folium.RegularPolygonMarker(
-                location=[nap["lat"], nap["lon"]],
-                number_of_sides=3,
-                radius=9,
-                rotation=0,
-                color="lime",
-                weight=2,
-                fill=True,
-                fill_color="lime",
-                fill_opacity=0.9,
-                popup=f"CAJA NAP: {nap['name']}"
-            ).add_to(fg_nap)
-
-        # --- FOSC / BOTELLAS (rectángulo morado) ---
-        for bot in data["botellas"]:
-            folium.RegularPolygonMarker(
-                location=[bot["lat"], bot["lon"]],
-                number_of_sides=4,
-                radius=8,
-                rotation=0,
-                color="purple",
-                weight=2,
-                fill=True,
-                fill_color="purple",
-                fill_opacity=0.9,
-                popup=f"FOSC / BOTELLA: {bot['name']}"
-            ).add_to(fg_fosc)
-
-        # Control de capas para encender/apagar
-        folium.LayerControl(collapsed=False).add_to(m)
-
-        # Mapa más alto
-        st_folium(m, width="100%", height=650, key="mapa_kmz")
-
-# -------- RESUMEN TABULAR + ESTADÍSTICAS --------
-st.subheader("3. Resumen de elementos del diseño (KMZ)")
-
-if not st.session_state.kmz_data:
-    st.info("Subí un KMZ para ver el resumen de elementos.")
-else:
-    data = st.session_state.kmz_data
-
-    # Calcular totales para el resumen y gráficos
-    total_troncal_m = 0.0
-    total_deriv_m = 0.0
-    total_precon_m = 0.0
-
-    for cable in data["cables_troncales"]:
-        total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
-    for cable in data["cables_derivaciones"]:
-        total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
-    for cable in data["cables_preconect"]:
-        total_precon_m += longitud_total_km(cable["coords"]) * 1000.0
-
-    cant_nodo = len(data["nodo"])
-    cant_hub = len(data["cajas_hub"])
-    cant_nap = len(data["cajas_nap"])
-    cant_fosc = len(data["botellas"])
-
-    # ---- Tabla de resumen única ----
-    st.markdown("### Resumen general por tipo de elemento")
-
-    filas_resumen = [
-        {"Elemento": "Nodos", "Cantidad": cant_nodo, "Longitud total (m)": ""},
-        {"Elemento": "Cajas HUB", "Cantidad": cant_hub, "Longitud total (m)": ""},
-        {"Elemento": "Cajas NAP", "Cantidad": cant_nap, "Longitud total (m)": ""},
-        {"Elemento": "FOSC / Botellas", "Cantidad": cant_fosc, "Longitud total (m)": ""},
-        {
-            "Elemento": "Cables troncales",
-            "Cantidad": len(data["cables_troncales"]),
-            "Longitud total (m)": round(total_troncal_m, 1)
-        },
-        {
-            "Elemento": "Cables derivación",
-            "Cantidad": len(data["cables_derivaciones"]),
-            "Longitud total (m)": round(total_deriv_m, 1)
-        },
-        {
-            "Elemento": "Cables preconectorizados",
-            "Cantidad": len(data["cables_preconect"]),
-            "Longitud total (m)": round(total_precon_m, 1)
-        },
-    ]
-
-    df_resumen = pd.DataFrame(filas_resumen)
-    st.dataframe(df_resumen, use_container_width=True, hide_index=True)
-
-    # ---- Detalle por tipo en expanders ----
-    st.markdown("### Detalle por tipo (opcional)")
-
-    with st.expander("Detalle de nodos"):
-        if data["nodo"]:
-            df_nodo = pd.DataFrame(data["nodo"])
-            st.dataframe(df_nodo[["name"]], use_container_width=True, hide_index=True)
-        else:
-            st.write("Sin NODO definido.")
-
-    with st.expander("Detalle de cajas HUB"):
-        if data["cajas_hub"]:
-            df_hub = pd.DataFrame(data["cajas_hub"])
-            st.dataframe(df_hub[["name"]], use_container_width=True, hide_index=True)
-        else:
-            st.write("Sin cajas HUB.")
-
-    with st.expander("Detalle de cajas NAP"):
-        if data["cajas_nap"]:
-            df_nap = pd.DataFrame(data["cajas_nap"])
-            st.dataframe(df_nap[["name"]], use_container_width=True, hide_index=True)
-        else:
-            st.write("Sin cajas NAP.")
-
-    with st.expander("Detalle de FOSC / Botellas"):
-        if data["botellas"]:
-            df_bot = pd.DataFrame(data["botellas"])
-            st.dataframe(df_bot[["name"]], use_container_width=True, hide_index=True)
-        else:
-            st.write("Sin FOSC / Botellas definidas.")
-
-    with st.expander("Detalle de cables troncales"):
-        if data["cables_troncales"]:
-            filas_tron = []
-            for cable in data["cables_troncales"]:
-                long_m = longitud_total_km(cable["coords"]) * 1000.0
-                filas_tron.append({
-                    "Cable": cable["name"],
-                    "Longitud (m)": round(long_m, 1)
-                })
-            df_tron = pd.DataFrame(filas_tron)
-            st.dataframe(df_tron, use_container_width=True, hide_index=True)
-        else:
-            st.write("No hay cables troncales.")
-
-    with st.expander("Detalle de cables de derivación"):
-        if data["cables_derivaciones"]:
-            filas_der = []
-            for cable in data["cables_derivaciones"]:
-                long_m = longitud_total_km(cable["coords"]) * 1000.0
-                filas_der.append({
-                    "Cable": cable["name"],
-                    "Longitud (m)": round(long_m, 1)
-                })
-            df_der = pd.DataFrame(filas_der)
-            st.dataframe(df_der, use_container_width=True, hide_index=True)
-        else:
-            st.write("No hay cables de derivación.")
-
-    with st.expander("Detalle de cables preconectorizados"):
-        if not data["cables_preconect"]:
-            st.write("No se encontraron CABLES PRECONECTORIZADOS en el KMZ.")
-        else:
-            filas_precon = []
-            for cable in data["cables_preconect"]:
-                nombre_cable = cable["name"]
-                coords = cable["coords"]
-                long_km = longitud_total_km(coords)
-                long_m = long_km * 1000.0
-
-                # Tomamos el último punto como extremo hacia NAP
-                lat_fin, lon_fin = coords[-1]
-                nap_dest, dist_km = nap_mas_cercana(lat_fin, lon_fin, data["cajas_nap"])
-
-                if nap_dest is not None:
-                    nombre_nap = nap_dest["name"]
-                else:
-                    nombre_nap = "Sin NAP cercana"
-
-                filas_precon.append({
-                    "Cable": nombre_cable,
-                    "NAP destino": nombre_nap,
-                    "Longitud (m)": round(long_m, 1)
-                })
-
-            df_precon = pd.DataFrame(filas_precon)
-            st.dataframe(df_precon, use_container_width=True, hide_index=True)
-
-    # =========================
-    # MÓDULO 3 — ESTADÍSTICAS Y GRÁFICOS
-    # =========================
-    st.markdown("---")
-    st.header("Módulo 3 — Estadísticas y gráficos del diseño")
-
-    st.markdown("#### Longitud total de cable por tipo")
-
-    fig_cables = go.Figure(
-        data=[
-            go.Bar(
-                x=["Troncal", "Derivación", "Preconectorizado"],
-                y=[total_troncal_m, total_deriv_m, total_precon_m]
-            )
-        ]
-    )
-    fig_cables.update_layout(
-        xaxis_title="Tipo de cable",
-        yaxis_title="Longitud (m)",
-        height=350
-    )
-    st.plotly_chart(fig_cables, use_container_width=True)
-
-    st.markdown("#### Cantidad de elementos por tipo")
-
-    fig_elems = go.Figure(
-        data=[
-            go.Bar(
-                x=["Nodos", "Cajas HUB", "Cajas NAP", "FOSC / Botellas"],
-                y=[cant_nodo, cant_hub, cant_nap, cant_fosc]
-            )
-        ]
-    )
-    fig_elems.update_layout(
-        xaxis_title="Tipo de elemento",
-        yaxis_title="Cantidad",
-        height=350
-    )
-    st.plotly_chart(fig_elems, use_container_width=True)
+        fig_elems = go.Figure(
+            data=[
+                go.Bar(
+                    x=["Nodos", "Cajas HUB", "Cajas NAP", "FOSC / Botellas"],
+                    y=[cant_nodo, cant_hub, cant_nap, cant_fosc],
+                    marker_color=["#f97316", "#38bdf8", "#22c55e", "#e11d48"]
+                )
+            ]
+        )
+        fig_elems.update_layout(
+            xaxis_title="Tipo de elemento",
+            yaxis_title="Cantidad",
+            height=350,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e5e7eb")
+        )
+        st.plotly_chart(fig_elems, use_container_width=True)
