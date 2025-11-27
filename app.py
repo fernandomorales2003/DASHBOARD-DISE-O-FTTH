@@ -519,345 +519,343 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
 """
     )
 
-    col_kmz, col_mapa = st.columns([0.3, 0.7])
+    # --------- CARGA KMZ (ARRIBA, 100%) ---------
+    st.subheader("Carga de diseño (KMZ)")
 
-    # --------- PANEL IZQUIERDO: CARGA KMZ ---------
-    with col_kmz:
-        st.subheader("Carga de diseño (KMZ)")
+    kmz_file = st.file_uploader("Seleccioná un archivo KMZ", type=["kmz"], key="kmz_uploader")
 
-        kmz_file = st.file_uploader("Seleccioná un archivo KMZ", type=["kmz"], key="kmz_uploader")
-
-        if kmz_file is not None:
-            try:
-                st.session_state.kmz_data = parsear_kmz_ftth(kmz_file)
-                st.success("KMZ cargado y procesado correctamente.")
-            except Exception as e:
-                st.session_state.kmz_data = None
-                st.error(f"Error al procesar el KMZ: {e}")
-
-        if st.button("🗑️ Limpiar diseño cargado", key="btn_clear_kmz"):
+    if kmz_file is not None:
+        try:
+            st.session_state.kmz_data = parsear_kmz_ftth(kmz_file)
+            st.success("KMZ cargado y procesado correctamente.")
+        except Exception as e:
             st.session_state.kmz_data = None
-            st.warning("Se limpió el diseño cargado.")
+            st.error(f"Error al procesar el KMZ: {e}")
 
-    # --------- PANEL DERECHO: MAPA FTTH ---------
-    with col_mapa:
-        st.subheader("Panel de red FTTH")
+    if st.button("🗑️ Limpiar diseño cargado", key="btn_clear_kmz"):
+        st.session_state.kmz_data = None
+        st.warning("Se limpió el diseño cargado.")
 
-        if not st.session_state.kmz_data:
-            st.info("Subí un KMZ válido para visualizar el diseño.")
-        else:
-            data = st.session_state.kmz_data
+    st.markdown("---")
 
-            # Totales para panel
-            total_troncal_m = 0.0
-            total_deriv_m = 0.0
-            total_precon_m = 0.0  # por si lo queremos usar después
+    # --------- PANEL DE RED (ABAJO, 100%) ---------
+    st.subheader("Panel de red FTTH")
 
-            # Buckets de precon por rango de distancia
-            buckets_precon = [
-                ("0 a 50 m - CABLE DE 50", 0, 50),
-                ("51 a 100 m - CABLE DE 100", 51, 100),
-                ("101 a 150 m - CABLE DE 150", 101, 150),
-                ("151 a 200 m - CABLE DE 200", 151, 200),
-                ("201 a 250 m - CABLE DE 250", 201, 250),
-                ("251 a 300 m - CABLE DE 300", 251, 300),
-            ]
-            precon_counts = {label: 0 for (label, _, _) in buckets_precon}
-            precon_mayor_300 = 0
+    if not st.session_state.kmz_data:
+        st.info("Subí un KMZ válido para visualizar el diseño.")
+    else:
+        data = st.session_state.kmz_data
 
-            # Longitudes
-            for cable in data["cables_troncales"]:
-                total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
+        # Totales para panel
+        total_troncal_m = 0.0
+        total_deriv_m = 0.0
+        total_precon_m = 0.0  # por si lo queremos usar después
 
-            for cable in data["cables_derivaciones"]:
-                total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
+        # Buckets de precon por rango de distancia
+        buckets_precon = [
+            ("0 a 50 m - CABLE DE 50", 0, 50),
+            ("51 a 100 m - CABLE DE 100", 51, 100),
+            ("101 a 150 m - CABLE DE 150", 101, 150),
+            ("151 a 200 m - CABLE DE 200", 151, 200),
+            ("201 a 250 m - CABLE DE 250", 201, 250),
+            ("251 a 300 m - CABLE DE 300", 251, 300),
+        ]
+        precon_counts = {label: 0 for (label, _, _) in buckets_precon}
+        precon_mayor_300 = 0
 
-            for cable in data["cables_preconect"]:
-                long_m = longitud_total_km(cable["coords"]) * 1000.0
-                total_precon_m += long_m
+        # Longitudes
+        for cable in data["cables_troncales"]:
+            total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
 
-                asignado = False
-                for label, lo, hi in buckets_precon:
-                    if lo <= long_m <= hi:
-                        precon_counts[label] += 1
-                        asignado = True
-                        break
-                if not asignado and long_m > 300:
-                    precon_mayor_300 += 1
+        for cable in data["cables_derivaciones"]:
+            total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
 
-            cant_nodo = len(data["nodo"])
-            cant_hub = len(data["cajas_hub"])
-            cant_nap = len(data["cajas_nap"])
-            cant_fosc = len(data["botellas"])
-            cant_precon = len(data["cables_preconect"])
+        for cable in data["cables_preconect"]:
+            long_m = longitud_total_km(cable["coords"]) * 1000.0
+            total_precon_m += long_m
 
-            # -------- MÉTRICAS SUPERIORES --------
-            r1c1, r1c2, r1c3 = st.columns(3)
-            with r1c1:
-                st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
-            with r1c2:
-                st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
-            with r1c3:
-                st.metric("Cables preconectorizados", cant_precon)
+            asignado = False
+            for label, lo, hi in buckets_precon:
+                if lo <= long_m <= hi:
+                    precon_counts[label] += 1
+                    asignado = True
+                    break
+            if not asignado and long_m > 300:
+                precon_mayor_300 += 1
 
-            r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-            with r2c1:
-                st.metric("Nodos", cant_nodo)
-            with r2c2:
-                st.metric("Cajas HUB", cant_hub)
-            with r2c3:
-                st.metric("Cajas NAP", cant_nap)
-            with r2c4:
-                st.metric("FOSC / Botellas", cant_fosc)
+        cant_nodo = len(data["nodo"])
+        cant_hub = len(data["cajas_hub"])
+        cant_nap = len(data["cajas_nap"])
+        cant_fosc = len(data["botellas"])
+        cant_precon = len(data["cables_preconect"])
 
-            # -------- SELECTORES DE QUÉ CABLES Y CAPAS MOSTRAR --------
-            nombres_troncales = [c["name"] for c in data["cables_troncales"]]
-            nombres_deriv = [c["name"] for c in data["cables_derivaciones"]]
+        # -------- MÉTRICAS SUPERIORES --------
+        r1c1, r1c2, r1c3 = st.columns(3)
+        with r1c1:
+            st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
+        with r1c2:
+            st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
+        with r1c3:
+            st.metric("Cables preconectorizados", cant_precon)
 
-            sel_col1, sel_col2 = st.columns(2)
-            with sel_col1:
-                troncales_sel = st.multiselect(
-                    "Troncales a mostrar",
-                    options=nombres_troncales,
-                    default=nombres_troncales,
-                    key="sel_troncales"
-                )
-            with sel_col2:
-                deriv_sel = st.multiselect(
-                    "Derivaciones a mostrar",
-                    options=nombres_deriv,
-                    default=nombres_deriv,
-                    key="sel_deriv"
-                )
+        r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+        with r2c1:
+            st.metric("Nodos", cant_nodo)
+        with r2c2:
+            st.metric("Cajas HUB", cant_hub)
+        with r2c3:
+            st.metric("Cajas NAP", cant_nap)
+        with r2c4:
+            st.metric("FOSC / Botellas", cant_fosc)
 
-            with st.expander("Capas visibles"):
-                cvis1, cvis2, cvis3 = st.columns(3)
-                with cvis1:
-                    show_nodos = st.checkbox("Nodos", True)
-                    show_hub = st.checkbox("Cajas HUB", True)
-                    show_nap = st.checkbox("Cajas NAP", True)
-                with cvis2:
-                    show_fosc = st.checkbox("FOSC / Botellas", True)
-                    show_troncales = st.checkbox("Troncales", True)
-                with cvis3:
-                    show_deriv = st.checkbox("Derivaciones", True)
-                    show_precon = st.checkbox("Preconectorizados", True)
+        # -------- SELECTORES DE QUÉ CABLES Y CAPAS MOSTRAR --------
+        nombres_troncales = [c["name"] for c in data["cables_troncales"]]
+        nombres_deriv = [c["name"] for c in data["cables_derivaciones"]]
 
-            # -------- CENTRO DEL MAPA (GENERAL) --------
-            latitudes = []
-            longitudes = []
-
-            for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
-                latitudes.append(p["lat"])
-                longitudes.append(p["lon"])
-
-            for cable in data["cables_troncales"] + data["cables_derivaciones"]:
-                for lat, lon in cable["coords"]:
-                    latitudes.append(lat)
-                    longitudes.append(lon)
-
-            for cable in data["cables_preconect"]:
-                for lat, lon in cable["coords"]:
-                    latitudes.append(lat)
-                    longitudes.append(lon)
-
-            if latitudes and longitudes:
-                center_lat = sum(latitudes) / len(latitudes)
-                center_lon = sum(longitudes) / len(longitudes)
-            else:
-                center_lat = -32.8894
-                center_lon = -68.8458
-
-            # -------- CREACIÓN DEL MAPA --------
-            m = folium.Map(
-                location=[center_lat, center_lon],
-                zoom_start=14,
-                tiles="CartoDB dark_matter"
+        sel_col1, sel_col2 = st.columns(2)
+        with sel_col1:
+            troncales_sel = st.multiselect(
+                "Troncales a mostrar",
+                options=nombres_troncales,
+                default=nombres_troncales,
+                key="sel_troncales"
+            )
+        with sel_col2:
+            deriv_sel = st.multiselect(
+                "Derivaciones a mostrar",
+                options=nombres_deriv,
+                default=nombres_deriv,
+                key="sel_deriv"
             )
 
-            # Cursor tipo mira
-            css = """
-            <style>
-            .leaflet-container {
-                cursor: crosshair !important;
-            }
-            .leaflet-interactive {
-                cursor: crosshair !important;
-            }
-            </style>
-            """
-            m.get_root().header.add_child(Element(css))
+        with st.expander("Capas visibles"):
+            cvis1, cvis2, cvis3 = st.columns(3)
+            with cvis1:
+                show_nodos = st.checkbox("Nodos", True)
+                show_hub = st.checkbox("Cajas HUB", True)
+                show_nap = st.checkbox("Cajas NAP", True)
+            with cvis2:
+                show_fosc = st.checkbox("FOSC / Botellas", True)
+                show_troncales = st.checkbox("Troncales", True)
+            with cvis3:
+                show_deriv = st.checkbox("Derivaciones", True)
+                show_precon = st.checkbox("Preconectorizados", True)
 
-            # ========= CAPAS BASE =========
-            if show_nodos:
-                fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
-                fg_nodo.add_to(m)
-            else:
-                fg_nodo = None
+        # -------- CENTRO DEL MAPA (GENERAL) --------
+        latitudes = []
+        longitudes = []
 
-            if show_hub:
-                fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
-                fg_hub.add_to(m)
-            else:
-                fg_hub = None
+        for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
+            latitudes.append(p["lat"])
+            longitudes.append(p["lon"])
 
-            if show_nap:
-                fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
-                fg_nap.add_to(m)
-            else:
-                fg_nap = None
+        for cable in data["cables_troncales"] + data["cables_derivaciones"]:
+            for lat, lon in cable["coords"]:
+                latitudes.append(lat)
+                longitudes.append(lon)
 
-            if show_fosc:
-                fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
-                fg_fosc.add_to(m)
-            else:
-                fg_fosc = None
+        for cable in data["cables_preconect"]:
+            for lat, lon in cable["coords"]:
+                latitudes.append(lat)
+                longitudes.append(lon)
 
-            if show_troncales:
-                fg_troncales = folium.FeatureGroup(name="Cables troncales (seleccionados)", show=True)
-                fg_troncales.add_to(m)
-            else:
-                fg_troncales = None
+        if latitudes and longitudes:
+            center_lat = sum(latitudes) / len(latitudes)
+            center_lon = sum(longitudes) / len(longitudes)
+        else:
+            center_lat = -32.8894
+            center_lon = -68.8458
 
-            if show_deriv:
-                fg_deriv = folium.FeatureGroup(name="Cables derivación (seleccionados)", show=True)
-                fg_deriv.add_to(m)
-            else:
-                fg_deriv = None
+        # -------- CREACIÓN DEL MAPA (100% ANCHO) --------
+        m = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=14,
+            tiles="CartoDB dark_matter"
+        )
 
-            if show_precon:
-                fg_precon = folium.FeatureGroup(name="Cables preconectorizados (todos)", show=True)
-                fg_precon.add_to(m)
-            else:
-                fg_precon = None
+        # Cursor tipo mira
+        css = """
+        <style>
+        .leaflet-container {
+            cursor: crosshair !important;
+        }
+        .leaflet-interactive {
+            cursor: crosshair !important;
+        }
+        </style>
+        """
+        m.get_root().header.add_child(Element(css))
 
-            # ----- NODOS -----
-            if fg_nodo is not None:
-                for nodo in data["nodo"]:
-                    folium.CircleMarker(
-                        location=[nodo["lat"], nodo["lon"]],
-                        radius=9,
-                        color="#f97316",
-                        fill=True,
-                        fill_color="#f97316",
-                        fill_opacity=0.9,
-                        popup=f"NODO: {nodo['name']}"
-                    ).add_to(fg_nodo)
+        # ========= CAPAS BASE =========
+        if show_nodos:
+            fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
+            fg_nodo.add_to(m)
+        else:
+            fg_nodo = None
 
-            # ========= CABLES TRONCALES (solo los seleccionados) =========
-            if fg_troncales is not None:
-                for cable in data["cables_troncales"]:
-                    if cable["name"] not in troncales_sel:
-                        continue
+        if show_hub:
+            fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
+            fg_hub.add_to(m)
+        else:
+            fg_hub = None
 
-                    folium.PolyLine(
-                        locations=cable["coords"],
-                        color="#3b82f6",
-                        weight=5,
-                        opacity=0.9,
-                        tooltip=f"Troncal: {cable['name']}",
-                        popup=f"Cable troncal: {cable['name']}"
-                    ).add_to(fg_troncales)
+        if show_nap:
+            fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
+            fg_nap.add_to(m)
+        else:
+            fg_nap = None
 
-            # ========= CABLES DERIVACIÓN (solo los seleccionados) =========
-            if fg_deriv is not None:
-                for cable in data["cables_derivaciones"]:
-                    if cable["name"] not in deriv_sel:
-                        continue
+        if show_fosc:
+            fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
+            fg_fosc.add_to(m)
+        else:
+            fg_fosc = None
 
-                    folium.PolyLine(
-                        locations=cable["coords"],
-                        color="#f59e0b",
-                        weight=3,
-                        opacity=0.8,
-                        tooltip=f"Derivación: {cable['name']}",
-                        popup=f"Cable derivación: {cable['name']}"
-                    ).add_to(fg_deriv)
+        if show_troncales:
+            fg_troncales = folium.FeatureGroup(name="Cables troncales (seleccionados)", show=True)
+            fg_troncales.add_to(m)
+        else:
+            fg_troncales = None
 
-            # ========= CABLES PRECONECTORIZADOS (todos juntos) =========
-            if fg_precon is not None:
-                for cable in data["cables_preconect"]:
-                    folium.PolyLine(
-                        locations=cable["coords"],
-                        color="#a855f7",
-                        weight=2,
-                        opacity=0.9,
-                        dash_array="4,4",
-                        tooltip=f"Precon: {cable['name']}",
-                        popup=f"Cable preconectorizado: {cable['name']}"
-                    ).add_to(fg_precon)
+        if show_deriv:
+            fg_deriv = folium.FeatureGroup(name="Cables derivación (seleccionados)", show=True)
+            fg_deriv.add_to(m)
+        else:
+            fg_deriv = None
 
-            # ========= CAJAS HUB =========
-            if fg_hub is not None:
-                for hub in data["cajas_hub"]:
-                    folium.RegularPolygonMarker(
-                        location=[hub["lat"], hub["lon"]],
-                        number_of_sides=4,
-                        radius=10,
-                        rotation=45,
-                        color="#38bdf8",
-                        weight=2,
-                        fill=True,
-                        fill_color="#38bdf8",
-                        fill_opacity=0.9,
-                        popup=f"CAJA HUB: {hub['name']}"
-                    ).add_to(fg_hub)
+        if show_precon:
+            fg_precon = folium.FeatureGroup(name="Cables preconectorizados (todos)", show=True)
+            fg_precon.add_to(m)
+        else:
+            fg_precon = None
 
-            # ========= CAJAS NAP =========
-            if fg_nap is not None:
-                for nap in data["cajas_nap"]:
-                    folium.RegularPolygonMarker(
-                        location=[nap["lat"], nap["lon"]],
-                        number_of_sides=3,
-                        radius=9,
-                        rotation=0,
-                        color="#22c55e",
-                        weight=2,
-                        fill=True,
-                        fill_color="#22c55e",
-                        fill_opacity=0.9,
-                        popup=f"CAJA NAP: {nap['name']}"
-                    ).add_to(fg_nap)
+        # ----- NODOS -----
+        if fg_nodo is not None:
+            for nodo in data["nodo"]:
+                folium.CircleMarker(
+                    location=[nodo["lat"], nodo["lon"]],
+                    radius=9,
+                    color="#f97316",
+                    fill=True,
+                    fill_color="#f97316",
+                    fill_opacity=0.9,
+                    popup=f"NODO: {nodo['name']}"
+                ).add_to(fg_nodo)
 
-            # ========= FOSC / BOTELLAS =========
-            if fg_fosc is not None:
-                for bot in data["botellas"]:
-                    folium.RegularPolygonMarker(
-                        location=[bot["lat"], bot["lon"]],
-                        number_of_sides=4,
-                        radius=8,
-                        rotation=0,
-                        color="#e11d48",
-                        weight=2,
-                        fill=True,
-                        fill_color="#e11d48",
-                        fill_opacity=0.9,
-                        popup=f"FOSC / BOTELLA: {bot['name']}"
-                    ).add_to(fg_fosc)
+        # ========= CABLES TRONCALES (solo los seleccionados) =========
+        if fg_troncales is not None:
+            for cable in data["cables_troncales"]:
+                if cable["name"] not in troncales_sel:
+                    continue
 
-            # (Sin LayerControl para no pelear con el estado al recargar)
-            st_folium(m, width="100%", height=650, key="mapa_kmz")
+                folium.PolyLine(
+                    locations=cable["coords"],
+                    color="#3b82f6",
+                    weight=5,
+                    opacity=0.9,
+                    tooltip=f"Troncal: {cable['name']}",
+                    popup=f"Cable troncal: {cable['name']}"
+                ).add_to(fg_troncales)
 
-            # --------- DISTRIBUCIÓN PRECON EN EXPANDER ---------
-            if cant_precon > 0:
-                with st.expander("Distribución de cables preconectorizados por longitud"):
-                    filas_precon_panel = []
-                    for label, lo, hi in buckets_precon:
-                        filas_precon_panel.append({
-                            "Rango": label,
-                            "Cantidad de cables": precon_counts[label]
-                        })
-                    if precon_mayor_300 > 0:
-                        filas_precon_panel.append({
-                            "Rango": "Mayor a 300 m",
-                            "Cantidad de cables": precon_mayor_300
-                        })
+        # ========= CABLES DERIVACIÓN (solo los seleccionados) =========
+        if fg_deriv is not None:
+            for cable in data["cables_derivaciones"]:
+                if cable["name"] not in deriv_sel:
+                    continue
 
-                    df_precon_panel = pd.DataFrame(filas_precon_panel)
-                    st.dataframe(df_precon_panel, use_container_width=True, hide_index=True)
-            else:
-                with st.expander("Distribución de cables preconectorizados por longitud"):
-                    st.info("No se encontraron cables preconectorizados en el diseño.")
+                folium.PolyLine(
+                    locations=cable["coords"],
+                    color="#f59e0b",
+                    weight=3,
+                    opacity=0.8,
+                    tooltip=f"Derivación: {cable['name']}",
+                    popup=f"Cable derivación: {cable['name']}"
+                ).add_to(fg_deriv)
+
+        # ========= CABLES PRECONECTORIZADOS (todos juntos) =========
+        if fg_precon is not None:
+            for cable in data["cables_preconect"]:
+                folium.PolyLine(
+                    locations=cable["coords"],
+                    color="#a855f7",
+                    weight=2,
+                    opacity=0.9,
+                    dash_array="4,4",
+                    tooltip=f"Precon: {cable['name']}",
+                    popup=f"Cable preconectorizado: {cable['name']}"
+                ).add_to(fg_precon)
+
+        # ========= CAJAS HUB =========
+        if fg_hub is not None:
+            for hub in data["cajas_hub"]:
+                folium.RegularPolygonMarker(
+                    location=[hub["lat"], hub["lon"]],
+                    number_of_sides=4,
+                    radius=10,
+                    rotation=45,
+                    color="#38bdf8",
+                    weight=2,
+                    fill=True,
+                    fill_color="#38bdf8",
+                    fill_opacity=0.9,
+                    popup=f"CAJA HUB: {hub['name']}"
+                ).add_to(fg_hub)
+
+        # ========= CAJAS NAP =========
+        if fg_nap is not None:
+            for nap in data["cajas_nap"]:
+                folium.RegularPolygonMarker(
+                    location=[nap["lat"], nap["lon"]],
+                    number_of_sides=3,
+                    radius=9,
+                    rotation=0,
+                    color="#22c55e",
+                    weight=2,
+                    fill=True,
+                    fill_color="#22c55e",
+                    fill_opacity=0.9,
+                    popup=f"CAJA NAP: {nap['name']}"
+                ).add_to(fg_nap)
+
+        # ========= FOSC / BOTELLAS =========
+        if fg_fosc is not None:
+            for bot in data["botellas"]:
+                folium.RegularPolygonMarker(
+                    location=[bot["lat"], bot["lon"]],
+                    number_of_sides=4,
+                    radius=8,
+                    rotation=0,
+                    color="#e11d48",
+                    weight=2,
+                    fill=True,
+                    fill_color="#e11d48",
+                    fill_opacity=0.9,
+                    popup=f"FOSC / BOTELLA: {bot['name']}"
+                ).add_to(fg_fosc)
+
+        # Render del mapa
+        st_folium(m, width="100%", height=650, key="mapa_kmz")
+
+        # --------- DISTRIBUCIÓN PRECON EN EXPANDER ---------
+        if cant_precon > 0:
+            with st.expander("Distribución de cables preconectorizados por longitud"):
+                filas_precon_panel = []
+                for label, lo, hi in buckets_precon:
+                    filas_precon_panel.append({
+                        "Rango": label,
+                        "Cantidad de cables": precon_counts[label]
+                    })
+                if precon_mayor_300 > 0:
+                    filas_precon_panel.append({
+                        "Rango": "Mayor a 300 m",
+                        "Cantidad de cables": precon_mayor_300
+                    })
+
+                df_precon_panel = pd.DataFrame(filas_precon_panel)
+                st.dataframe(df_precon_panel, use_container_width=True, hide_index=True)
+        else:
+            with st.expander("Distribución de cables preconectorizados por longitud"):
+                st.info("No se encontraron cables preconectorizados en el diseño.")
 
 # =========================
 # TAB 3 — ESTADÍSTICAS & RESUMEN
