@@ -813,7 +813,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     st.dataframe(df_precon_panel, use_container_width=True, hide_index=True)
             else:
                 with st.expander("Distribución de cables preconectorizados por longitud"):
-               
+                    st.info("No se encontraron cables preconectorizados en el diseño.")
 
 # =========================
 # TAB 3 — ESTADÍSTICAS & RESUMEN
