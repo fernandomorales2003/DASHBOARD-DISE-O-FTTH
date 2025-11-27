@@ -502,7 +502,7 @@ El sistema dibuja automáticamente:
 if "kmz_data" not in st.session_state:
     st.session_state.kmz_data = None
 
-# 👉 Cambio a 30% / 70%
+# 30% / 70% entre KMZ y mapa
 col_kmz, col_mapa = st.columns([0.3, 0.7])
 
 with col_kmz:
@@ -530,7 +530,43 @@ with col_mapa:
     else:
         data = st.session_state.kmz_data
 
-        # Calculamos un centro aproximado (promedio de todos los puntos y líneas)
+        # ===== Panel de totales para el diseño =====
+        total_troncal_m = 0.0
+        total_deriv_m = 0.0
+        total_precon_m = 0.0
+
+        for cable in data["cables_troncales"]:
+            total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
+        for cable in data["cables_derivaciones"]:
+            total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
+        for cable in data["cables_preconect"]:
+            total_precon_m += longitud_total_km(cable["coords"]) * 1000.0
+
+        cant_nodo = len(data["nodo"])
+        cant_hub = len(data["cajas_hub"])
+        cant_nap = len(data["cajas_nap"])
+        cant_fosc = len(data["botellas"])
+
+        st.markdown("### Resumen general del diseño")
+        r1c1, r1c2, r1c3 = st.columns(3)
+        with r1c1:
+            st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
+        with r1c2:
+            st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
+        with r1c3:
+            st.metric("Cable preconectorizado (m)", f"{total_precon_m:.0f}")
+
+        r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+        with r2c1:
+            st.metric("Nodos", cant_nodo)
+        with r2c2:
+            st.metric("Cajas HUB", cant_hub)
+        with r2c3:
+            st.metric("Cajas NAP", cant_nap)
+        with r2c4:
+            st.metric("FOSC / Botellas", cant_fosc)
+
+        # ===== Centro del mapa =====
         latitudes = []
         longitudes = []
 
@@ -685,10 +721,10 @@ with col_mapa:
         # Control de capas para encender/apagar
         folium.LayerControl(collapsed=False).add_to(m)
 
-        # 👉 Mapa más alto
+        # Mapa más alto
         st_folium(m, width="100%", height=650, key="mapa_kmz")
 
-# -------- RESUMEN TABULAR --------
+# -------- RESUMEN TABULAR + ESTADÍSTICAS --------
 st.subheader("3. Resumen de elementos del diseño (KMZ)")
 
 if not st.session_state.kmz_data:
@@ -696,66 +732,175 @@ if not st.session_state.kmz_data:
 else:
     data = st.session_state.kmz_data
 
-    col1, col2, col3 = st.columns(3)
+    # Calcular totales para el resumen y gráficos
+    total_troncal_m = 0.0
+    total_deriv_m = 0.0
+    total_precon_m = 0.0
 
-    with col1:
-        st.markdown("**NODO**")
+    for cable in data["cables_troncales"]:
+        total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
+    for cable in data["cables_derivaciones"]:
+        total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
+    for cable in data["cables_preconect"]:
+        total_precon_m += longitud_total_km(cable["coords"]) * 1000.0
+
+    cant_nodo = len(data["nodo"])
+    cant_hub = len(data["cajas_hub"])
+    cant_nap = len(data["cajas_nap"])
+    cant_fosc = len(data["botellas"])
+
+    # ---- Tabla de resumen única ----
+    st.markdown("### Resumen general por tipo de elemento")
+
+    filas_resumen = [
+        {"Elemento": "Nodos", "Cantidad": cant_nodo, "Longitud total (m)": ""},
+        {"Elemento": "Cajas HUB", "Cantidad": cant_hub, "Longitud total (m)": ""},
+        {"Elemento": "Cajas NAP", "Cantidad": cant_nap, "Longitud total (m)": ""},
+        {"Elemento": "FOSC / Botellas", "Cantidad": cant_fosc, "Longitud total (m)": ""},
+        {
+            "Elemento": "Cables troncales",
+            "Cantidad": len(data["cables_troncales"]),
+            "Longitud total (m)": round(total_troncal_m, 1)
+        },
+        {
+            "Elemento": "Cables derivación",
+            "Cantidad": len(data["cables_derivaciones"]),
+            "Longitud total (m)": round(total_deriv_m, 1)
+        },
+        {
+            "Elemento": "Cables preconectorizados",
+            "Cantidad": len(data["cables_preconect"]),
+            "Longitud total (m)": round(total_precon_m, 1)
+        },
+    ]
+
+    df_resumen = pd.DataFrame(filas_resumen)
+    st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+
+    # ---- Detalle por tipo en expanders ----
+    st.markdown("### Detalle por tipo (opcional)")
+
+    with st.expander("Detalle de nodos"):
         if data["nodo"]:
             df_nodo = pd.DataFrame(data["nodo"])
-            st.dataframe(df_nodo, use_container_width=True, hide_index=True)
+            st.dataframe(df_nodo[["name"]], use_container_width=True, hide_index=True)
         else:
             st.write("Sin NODO definido.")
 
-    with col2:
-        st.markdown("**Cajas HUB**")
+    with st.expander("Detalle de cajas HUB"):
         if data["cajas_hub"]:
             df_hub = pd.DataFrame(data["cajas_hub"])
-            st.dataframe(df_hub, use_container_width=True, hide_index=True)
+            st.dataframe(df_hub[["name"]], use_container_width=True, hide_index=True)
         else:
             st.write("Sin cajas HUB.")
 
-    with col3:
-        st.markdown("**Cajas NAP**")
+    with st.expander("Detalle de cajas NAP"):
         if data["cajas_nap"]:
             df_nap = pd.DataFrame(data["cajas_nap"])
-            st.dataframe(df_nap, use_container_width=True, hide_index=True)
+            st.dataframe(df_nap[["name"]], use_container_width=True, hide_index=True)
         else:
             st.write("Sin cajas NAP.")
 
-    st.markdown("**FOSC / Botellas de fibra óptica**")
-    if data["botellas"]:
-        df_bot = pd.DataFrame(data["botellas"])
-        st.dataframe(df_bot, use_container_width=True, hide_index=True)
-    else:
-        st.write("Sin FOSC / Botellas definidas.")
+    with st.expander("Detalle de FOSC / Botellas"):
+        if data["botellas"]:
+            df_bot = pd.DataFrame(data["botellas"])
+            st.dataframe(df_bot[["name"]], use_container_width=True, hide_index=True)
+        else:
+            st.write("Sin FOSC / Botellas definidas.")
 
-    # -------- TABLA DE CABLES PRECONECTORIZADOS --------
-    st.markdown("### Cables preconectorizados (detalle)")
+    with st.expander("Detalle de cables troncales"):
+        if data["cables_troncales"]:
+            filas_tron = []
+            for cable in data["cables_troncales"]:
+                long_m = longitud_total_km(cable["coords"]) * 1000.0
+                filas_tron.append({
+                    "Cable": cable["name"],
+                    "Longitud (m)": round(long_m, 1)
+                })
+            df_tron = pd.DataFrame(filas_tron)
+            st.dataframe(df_tron, use_container_width=True, hide_index=True)
+        else:
+            st.write("No hay cables troncales.")
 
-    if not data["cables_preconect"]:
-        st.info("No se encontraron CABLES PRECONECTORIZADOS en el KMZ.")
-    else:
-        filas = []
-        for cable in data["cables_preconect"]:
-            nombre_cable = cable["name"]
-            coords = cable["coords"]
-            long_km = longitud_total_km(coords)
-            long_m = long_km * 1000.0
+    with st.expander("Detalle de cables de derivación"):
+        if data["cables_derivaciones"]:
+            filas_der = []
+            for cable in data["cables_derivaciones"]:
+                long_m = longitud_total_km(cable["coords"]) * 1000.0
+                filas_der.append({
+                    "Cable": cable["name"],
+                    "Longitud (m)": round(long_m, 1)
+                })
+            df_der = pd.DataFrame(filas_der)
+            st.dataframe(df_der, use_container_width=True, hide_index=True)
+        else:
+            st.write("No hay cables de derivación.")
 
-            # Tomamos el último punto como extremo hacia NAP
-            lat_fin, lon_fin = coords[-1]
-            nap_dest, dist_km = nap_mas_cercana(lat_fin, lon_fin, data["cajas_nap"])
+    with st.expander("Detalle de cables preconectorizados"):
+        if not data["cables_preconect"]:
+            st.write("No se encontraron CABLES PRECONECTORIZADOS en el KMZ.")
+        else:
+            filas_precon = []
+            for cable in data["cables_preconect"]:
+                nombre_cable = cable["name"]
+                coords = cable["coords"]
+                long_km = longitud_total_km(coords)
+                long_m = long_km * 1000.0
 
-            if nap_dest is not None:
-                nombre_nap = nap_dest["name"]
-            else:
-                nombre_nap = "Sin NAP cercana"
+                # Tomamos el último punto como extremo hacia NAP
+                lat_fin, lon_fin = coords[-1]
+                nap_dest, dist_km = nap_mas_cercana(lat_fin, lon_fin, data["cajas_nap"])
 
-            filas.append({
-                "Cable": nombre_cable,
-                "NAP destino": nombre_nap,
-                "Longitud (m)": round(long_m, 1)
-            })
+                if nap_dest is not None:
+                    nombre_nap = nap_dest["name"]
+                else:
+                    nombre_nap = "Sin NAP cercana"
 
-        df_precon = pd.DataFrame(filas)
-        st.dataframe(df_precon, use_container_width=True, hide_index=True)
+                filas_precon.append({
+                    "Cable": nombre_cable,
+                    "NAP destino": nombre_nap,
+                    "Longitud (m)": round(long_m, 1)
+                })
+
+            df_precon = pd.DataFrame(filas_precon)
+            st.dataframe(df_precon, use_container_width=True, hide_index=True)
+
+    # =========================
+    # MÓDULO 3 — ESTADÍSTICAS Y GRÁFICOS
+    # =========================
+    st.markdown("---")
+    st.header("Módulo 3 — Estadísticas y gráficos del diseño")
+
+    st.markdown("#### Longitud total de cable por tipo")
+
+    fig_cables = go.Figure(
+        data=[
+            go.Bar(
+                x=["Troncal", "Derivación", "Preconectorizado"],
+                y=[total_troncal_m, total_deriv_m, total_precon_m]
+            )
+        ]
+    )
+    fig_cables.update_layout(
+        xaxis_title="Tipo de cable",
+        yaxis_title="Longitud (m)",
+        height=350
+    )
+    st.plotly_chart(fig_cables, use_container_width=True)
+
+    st.markdown("#### Cantidad de elementos por tipo")
+
+    fig_elems = go.Figure(
+        data=[
+            go.Bar(
+                x=["Nodos", "Cajas HUB", "Cajas NAP", "FOSC / Botellas"],
+                y=[cant_nodo, cant_hub, cant_nap, cant_fosc]
+            )
+        ]
+    )
+    fig_elems.update_layout(
+        xaxis_title="Tipo de elemento",
+        yaxis_title="Cantidad",
+        height=350
+    )
+    st.plotly_chart(fig_elems, use_container_width=True)
