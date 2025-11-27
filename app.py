@@ -609,24 +609,51 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             with r2c4:
                 st.metric("FOSC / Botellas", cant_fosc)
 
+            # ---------- SELECTOR DE TRONCAL ----------
+            troncal_names = [c["name"] for c in data["cables_troncales"]]
+            if troncal_names:
+                opciones_troncal = ["(Todos)"] + troncal_names
+                selected_troncal = st.selectbox(
+                    "Resaltar cable troncal",
+                    opciones_troncal,
+                    index=0
+                )
+            else:
+                selected_troncal = "(Todos)"
+
             # ------------ MAPA ------------
             # Centro del mapa
             latitudes = []
             longitudes = []
 
-            for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
-                latitudes.append(p["lat"])
-                longitudes.append(p["lon"])
+            # Si hay un troncal seleccionado, usamos ese para centrar
+            troncal_seleccionado_coords = None
+            if selected_troncal != "(Todos)":
+                for cable in data["cables_troncales"]:
+                    if cable["name"] == selected_troncal:
+                        troncal_seleccionado_coords = cable["coords"]
+                        break
 
-            for cable in data["cables_troncales"] + data["cables_derivaciones"]:
-                for lat, lon in cable["coords"]:
+            if troncal_seleccionado_coords:
+                # centramos en el troncal seleccionado
+                for lat, lon in troncal_seleccionado_coords:
                     latitudes.append(lat)
                     longitudes.append(lon)
+            else:
+                # centro general
+                for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
+                    latitudes.append(p["lat"])
+                    longitudes.append(p["lon"])
 
-            for cable in data["cables_preconect"]:
-                for lat, lon in cable["coords"]:
-                    latitudes.append(lat)
-                    longitudes.append(lon)
+                for cable in data["cables_troncales"] + data["cables_derivaciones"]:
+                    for lat, lon in cable["coords"]:
+                        latitudes.append(lat)
+                        longitudes.append(lon)
+
+                for cable in data["cables_preconect"]:
+                    for lat, lon in cable["coords"]:
+                        latitudes.append(lat)
+                        longitudes.append(lon)
 
             if latitudes and longitudes:
                 center_lat = sum(latitudes) / len(latitudes)
@@ -683,13 +710,18 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                     popup=f"NODO: {nodo['name']}"
                 ).add_to(fg_nodo)
 
-            # CABLES TRONCALES
+            # CABLES TRONCALES (con resaltado)
             for cable in data["cables_troncales"]:
+                es_seleccionado = (selected_troncal != "(Todos)" and cable["name"] == selected_troncal)
+                color = "#3b82f6" if not es_seleccionado else "#22d3ee"
+                weight = 5 if not es_seleccionado else 7
+                opacity = 0.9 if not es_seleccionado else 1.0
+
                 folium.PolyLine(
                     locations=cable["coords"],
-                    color="#3b82f6",          # azul
-                    weight=5,
-                    opacity=0.9,
+                    color=color,
+                    weight=weight,
+                    opacity=opacity,
                     tooltip=f"Troncal: {cable['name']}",
                     popup=f"Cable troncal: {cable['name']}"
                 ).add_to(fg_troncales)
@@ -762,8 +794,8 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                     popup=f"FOSC / BOTELLA: {bot['name']}"
                 ).add_to(fg_fosc)
 
-            # Control de capas
-            folium.LayerControl(collapsed=False).add_to(m)
+            # Control de capas (colapsado para "ocultar" el menú)
+            folium.LayerControl(collapsed=True).add_to(m)
 
             st_folium(m, width="100%", height=650, key="mapa_kmz")
 
