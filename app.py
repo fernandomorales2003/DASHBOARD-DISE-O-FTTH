@@ -200,12 +200,12 @@ def parsear_kmz_ftth(file_obj):
     """
     data = {
         "nodo": [],
-        "cables_troncales": [],
-        "cables_derivaciones": [],
-        "cables_preconect": [],   # lista de dicts {name, coords}
+        "cables_troncales": [],      # lista de dicts {name, coords}
+        "cables_derivaciones": [],   # lista de dicts {name, coords}
+        "cables_preconect": [],      # lista de dicts {name, coords}
         "cajas_hub": [],
         "cajas_nap": [],
-        "botellas": []            # lista de dicts {name, lat, lon} (FOSC / botellas)
+        "botellas": []               # lista de dicts {name, lat, lon} (FOSC / botellas)
     }
 
     # 1) Abrir KMZ (zip) y encontrar el primer .kml
@@ -299,11 +299,16 @@ def parsear_kmz_ftth(file_obj):
                 coords_list = parse_coordinates(get_text(coords_elem))
                 if coords_list:
                     if "CABLES TRONCALES" in p or "TRONCAL" in p:
-                        data["cables_troncales"].append(coords_list)
+                        data["cables_troncales"].append({
+                            "name": pm_name,
+                            "coords": coords_list
+                        })
                     elif "CABLES DERIVACIONES" in p or "DERIV" in p:
-                        data["cables_derivaciones"].append(coords_list)
+                        data["cables_derivaciones"].append({
+                            "name": pm_name,
+                            "coords": coords_list
+                        })
                     elif "CABLES PRECONECTORIZADOS" in p or "PRECO" in p:
-                        # guardamos nombre + coords para poder calcular distancia y NAP
                         data["cables_preconect"].append({
                             "name": pm_name,
                             "coords": coords_list
@@ -532,8 +537,8 @@ with col_mapa:
             latitudes.append(p["lat"])
             longitudes.append(p["lon"])
 
-        for linea in data["cables_troncales"] + data["cables_derivaciones"]:
-            for lat, lon in linea:
+        for cable in data["cables_troncales"] + data["cables_derivaciones"]:
+            for lat, lon in cable["coords"]:
                 latitudes.append(lat)
                 longitudes.append(lon)
 
@@ -568,6 +573,23 @@ with col_mapa:
         """
         m.get_root().header.add_child(Element(css))
 
+        # ---- FeatureGroups para poder apagar/encender capas ----
+        fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
+        fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
+        fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
+        fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
+        fg_troncales = folium.FeatureGroup(name="Cables troncales", show=True)
+        fg_deriv = folium.FeatureGroup(name="Cables derivación", show=True)
+        fg_precon = folium.FeatureGroup(name="Cables preconectorizados", show=True)
+
+        fg_nodo.add_to(m)
+        fg_hub.add_to(m)
+        fg_nap.add_to(m)
+        fg_fosc.add_to(m)
+        fg_troncales.add_to(m)
+        fg_deriv.add_to(m)
+        fg_precon.add_to(m)
+
         # --- NODO (punto) ---
         for nodo in data["nodo"]:
             folium.CircleMarker(
@@ -578,29 +600,31 @@ with col_mapa:
                 fill_color="red",
                 fill_opacity=0.9,
                 popup=f"NODO: {nodo['name']}"
-            ).add_to(m)
+            ).add_to(fg_nodo)
 
-        # --- CABLES TRONCALES (líneas gruesas) ---
-        for linea in data["cables_troncales"]:
+        # --- CABLES TRONCALES (líneas gruesas, con nombre en popup) ---
+        for cable in data["cables_troncales"]:
             folium.PolyLine(
-                locations=linea,
+                locations=cable["coords"],
                 color="deepskyblue",
                 weight=5,
                 opacity=0.9,
-                tooltip="CABLE TRONCAL"
-            ).add_to(m)
+                tooltip=f"Troncal: {cable['name']}",
+                popup=f"Cable troncal: {cable['name']}"
+            ).add_to(fg_troncales)
 
-        # --- CABLES DERIVACIONES (líneas más finas) ---
-        for linea in data["cables_derivaciones"]:
+        # --- CABLES DERIVACIONES (líneas más finas, con nombre en popup) ---
+        for cable in data["cables_derivaciones"]:
             folium.PolyLine(
-                locations=linea,
+                locations=cable["coords"],
                 color="orange",
                 weight=3,
                 opacity=0.8,
-                tooltip="CABLE DERIVACIÓN"
-            ).add_to(m)
+                tooltip=f"Derivación: {cable['name']}",
+                popup=f"Cable derivación: {cable['name']}"
+            ).add_to(fg_deriv)
 
-        # --- CABLES PRECONECTORIZADOS (líneas finas punteadas) ---
+        # --- CABLES PRECONECTORIZADOS (líneas finas punteadas, con nombre en popup) ---
         for cable in data["cables_preconect"]:
             folium.PolyLine(
                 locations=cable["coords"],
@@ -608,8 +632,9 @@ with col_mapa:
                 weight=2,
                 opacity=0.9,
                 dash_array="4,4",
-                tooltip="CABLE PRECONECTORIZADO"
-            ).add_to(m)
+                tooltip=f"Precon: {cable['name']}",
+                popup=f"Cable preconectorizado: {cable['name']}"
+            ).add_to(fg_precon)
 
         # --- CAJAS HUB (rombos azules) ---
         for hub in data["cajas_hub"]:
@@ -624,7 +649,7 @@ with col_mapa:
                 fill_color="blue",
                 fill_opacity=0.9,
                 popup=f"CAJA HUB: {hub['name']}"
-            ).add_to(m)
+            ).add_to(fg_hub)
 
         # --- CAJAS NAP (triángulos verdes) ---
         for nap in data["cajas_nap"]:
@@ -639,7 +664,7 @@ with col_mapa:
                 fill_color="lime",
                 fill_opacity=0.9,
                 popup=f"CAJA NAP: {nap['name']}"
-            ).add_to(m)
+            ).add_to(fg_nap)
 
         # --- FOSC / BOTELLAS (rectángulo morado) ---
         for bot in data["botellas"]:
@@ -648,13 +673,16 @@ with col_mapa:
                 number_of_sides=4,
                 radius=8,
                 rotation=0,
-                color="white",
+                color="purple",
                 weight=2,
                 fill=True,
-                fill_color="white",
+                fill_color="purple",
                 fill_opacity=0.9,
                 popup=f"FOSC / BOTELLA: {bot['name']}"
-            ).add_to(m)
+            ).add_to(fg_fosc)
+
+        # Control de capas para encender/apagar
+        folium.LayerControl(collapsed=False).add_to(m)
 
         st_folium(m, width="100%", height=550, key="mapa_kmz")
 
