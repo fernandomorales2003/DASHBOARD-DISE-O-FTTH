@@ -16,8 +16,7 @@ st.set_page_config(
 # =========================
 # ESTILOS GLOBALES (UX / UI)
 # =========================
-# Dejamos el fondo de Streamlit por defecto (claro).
-# Solo ajustamos los gráficos para que no pongan fondo gris.
+# Fondo claro por defecto, solo limpiamos fondo de gráficos Plotly
 
 st.markdown(
     """
@@ -550,28 +549,55 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             # Totales para panel y mapa
             total_troncal_m = 0.0
             total_deriv_m = 0.0
-            total_precon_m = 0.0
+            total_precon_m = 0.0  # lo seguimos calculando por si lo necesitás después
+
+            # Buckets de precon por rango de distancia
+            buckets_precon = [
+                ("0 a 50 m - CABLE DE 50", 0, 50),
+                ("51 a 100 m - CABLE DE 100", 51, 100),
+                ("101 a 150 m - CABLE DE 150", 101, 150),
+                ("151 a 200 m - CABLE DE 200", 151, 200),
+                ("201 a 250 m - CABLE DE 250", 201, 250),
+                ("251 a 300 m - CABLE DE 300", 251, 300),
+            ]
+            precon_counts = {label: 0 for (label, _, _) in buckets_precon}
+            precon_mayor_300 = 0  # por si hubiera cables más largos
 
             for cable in data["cables_troncales"]:
                 total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
+
             for cable in data["cables_derivaciones"]:
                 total_deriv_m += longitud_total_km(cable["coords"]) * 1000.0
+
             for cable in data["cables_preconect"]:
-                total_precon_m += longitud_total_km(cable["coords"]) * 1000.0
+                long_m = longitud_total_km(cable["coords"]) * 1000.0
+                total_precon_m += long_m
+
+                # Clasificar en bucket de longitud
+                asignado = False
+                for label, lo, hi in buckets_precon:
+                    if lo <= long_m <= hi:
+                        precon_counts[label] += 1
+                        asignado = True
+                        break
+                if not asignado and long_m > 300:
+                    precon_mayor_300 += 1
 
             cant_nodo = len(data["nodo"])
             cant_hub = len(data["cajas_hub"])
             cant_nap = len(data["cajas_nap"])
             cant_fosc = len(data["botellas"])
+            cant_precon = len(data["cables_preconect"])
 
-            # Pequeño resumen arriba del mapa
+            # Métricas arriba del mapa
             r1c1, r1c2, r1c3 = st.columns(3)
             with r1c1:
                 st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
             with r1c2:
                 st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
             with r1c3:
-                st.metric("Cable precon (m)", f"{total_precon_m:.0f}")
+                # 🔹 Ahora muestra cantidad de cables precon, no metros
+                st.metric("Cables preconectorizados", cant_precon)
 
             r2c1, r2c2, r2c3, r2c4 = st.columns(4)
             with r2c1:
@@ -582,6 +608,26 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                 st.metric("Cajas NAP", cant_nap)
             with r2c4:
                 st.metric("FOSC / Botellas", cant_fosc)
+
+            # Distribución por rangos de cables precon
+            st.markdown("#### Distribución de cables preconectorizados por longitud")
+            if cant_precon == 0:
+                st.info("No se encontraron cables preconectorizados en el diseño.")
+            else:
+                filas_precon_panel = []
+                for label, lo, hi in buckets_precon:
+                    filas_precon_panel.append({
+                        "Rango": label,
+                        "Cantidad de cables": precon_counts[label]
+                    })
+                if precon_mayor_300 > 0:
+                    filas_precon_panel.append({
+                        "Rango": "Mayor a 300 m",
+                        "Cantidad de cables": precon_mayor_300
+                    })
+
+                df_precon_panel = pd.DataFrame(filas_precon_panel)
+                st.dataframe(df_precon_panel, use_container_width=True, hide_index=True)
 
             # Centro del mapa
             latitudes = []
