@@ -504,8 +504,6 @@ Ajustá los parámetros del enlace y visualizá el mapa lógico junto con el pre
         st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
 
         st.info(resultados["comentario"])
-
-
 # =========================
 # TAB 2 — MAPA FTTH (KMZ)
 # =========================
@@ -515,12 +513,14 @@ with tab2:
         """
 ### Mapa FTTH desde archivo KMZ
 
-Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, derivaciones, cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
+Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, derivaciones,
+cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
 """
     )
 
     col_kmz, col_mapa = st.columns([0.3, 0.7])
 
+    # --------- PANEL IZQUIERDO: CARGA KMZ ---------
     with col_kmz:
         st.subheader("Carga de diseño (KMZ)")
 
@@ -538,6 +538,7 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             st.session_state.kmz_data = None
             st.warning("Se limpió el diseño cargado.")
 
+    # --------- PANEL DERECHO: MAPA FTTH ---------
     with col_mapa:
         st.subheader("Panel de red FTTH")
 
@@ -546,10 +547,10 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
         else:
             data = st.session_state.kmz_data
 
-            # Totales para panel y mapa
+            # Totales para panel
             total_troncal_m = 0.0
             total_deriv_m = 0.0
-            total_precon_m = 0.0  # lo seguimos calculando por si lo necesitás después
+            total_precon_m = 0.0  # por si lo queremos usar después
 
             # Buckets de precon por rango de distancia
             buckets_precon = [
@@ -561,8 +562,9 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                 ("251 a 300 m - CABLE DE 300", 251, 300),
             ]
             precon_counts = {label: 0 for (label, _, _) in buckets_precon}
-            precon_mayor_300 = 0  # por si hubiera cables más largos
+            precon_mayor_300 = 0
 
+            # Longitudes
             for cable in data["cables_troncales"]:
                 total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
 
@@ -573,7 +575,6 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                 long_m = longitud_total_km(cable["coords"]) * 1000.0
                 total_precon_m += long_m
 
-                # Clasificar en bucket de longitud
                 asignado = False
                 for label, lo, hi in buckets_precon:
                     if lo <= long_m <= hi:
@@ -589,14 +590,13 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             cant_fosc = len(data["botellas"])
             cant_precon = len(data["cables_preconect"])
 
-            # Métricas arriba del mapa
+            # -------- MÉTRICAS SUPERIORES --------
             r1c1, r1c2, r1c3 = st.columns(3)
             with r1c1:
                 st.metric("Cable troncal (m)", f"{total_troncal_m:.0f}")
             with r1c2:
                 st.metric("Cable derivación (m)", f"{total_deriv_m:.0f}")
             with r1c3:
-                # 🔹 Ahora muestra cantidad de cables precon, no metros
                 st.metric("Cables preconectorizados", cant_precon)
 
             r2c1, r2c2, r2c3, r2c4 = st.columns(4)
@@ -609,51 +609,23 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             with r2c4:
                 st.metric("FOSC / Botellas", cant_fosc)
 
-            # ---------- SELECTOR DE TRONCAL ----------
-            troncal_names = [c["name"] for c in data["cables_troncales"]]
-            if troncal_names:
-                opciones_troncal = ["(Todos)"] + troncal_names
-                selected_troncal = st.selectbox(
-                    "Resaltar cable troncal",
-                    opciones_troncal,
-                    index=0
-                )
-            else:
-                selected_troncal = "(Todos)"
-
-            # ------------ MAPA ------------
-            # Centro del mapa
+            # -------- CENTRO DEL MAPA (GENERAL) --------
             latitudes = []
             longitudes = []
 
-            # Si hay un troncal seleccionado, usamos ese para centrar
-            troncal_seleccionado_coords = None
-            if selected_troncal != "(Todos)":
-                for cable in data["cables_troncales"]:
-                    if cable["name"] == selected_troncal:
-                        troncal_seleccionado_coords = cable["coords"]
-                        break
+            for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
+                latitudes.append(p["lat"])
+                longitudes.append(p["lon"])
 
-            if troncal_seleccionado_coords:
-                # centramos en el troncal seleccionado
-                for lat, lon in troncal_seleccionado_coords:
+            for cable in data["cables_troncales"] + data["cables_derivaciones"]:
+                for lat, lon in cable["coords"]:
                     latitudes.append(lat)
                     longitudes.append(lon)
-            else:
-                # centro general
-                for p in data["nodo"] + data["cajas_hub"] + data["cajas_nap"] + data["botellas"]:
-                    latitudes.append(p["lat"])
-                    longitudes.append(p["lon"])
 
-                for cable in data["cables_troncales"] + data["cables_derivaciones"]:
-                    for lat, lon in cable["coords"]:
-                        latitudes.append(lat)
-                        longitudes.append(lon)
-
-                for cable in data["cables_preconect"]:
-                    for lat, lon in cable["coords"]:
-                        latitudes.append(lat)
-                        longitudes.append(lon)
+            for cable in data["cables_preconect"]:
+                for lat, lon in cable["coords"]:
+                    latitudes.append(lat)
+                    longitudes.append(lon)
 
             if latitudes and longitudes:
                 center_lat = sum(latitudes) / len(latitudes)
@@ -662,6 +634,7 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                 center_lat = -32.8894
                 center_lon = -68.8458
 
+            # -------- CREACIÓN DEL MAPA --------
             m = folium.Map(
                 location=[center_lat, center_lon],
                 zoom_start=14,
@@ -681,7 +654,7 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             """
             m.get_root().header.add_child(Element(css))
 
-            # FeatureGroups para capas
+            # FeatureGroups (cada subelemento aparece como capa en el menú)
             fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
             fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
             fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
@@ -698,50 +671,45 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             fg_deriv.add_to(m)
             fg_precon.add_to(m)
 
-            # NODO
+            # ----- NODOS -----
             for nodo in data["nodo"]:
                 folium.CircleMarker(
                     location=[nodo["lat"], nodo["lon"]],
                     radius=9,
-                    color="#f97316",          # naranja fuerte
+                    color="#f97316",
                     fill=True,
                     fill_color="#f97316",
                     fill_opacity=0.9,
                     popup=f"NODO: {nodo['name']}"
                 ).add_to(fg_nodo)
 
-            # CABLES TRONCALES (con resaltado)
+            # ----- CABLES TRONCALES -----
             for cable in data["cables_troncales"]:
-                es_seleccionado = (selected_troncal != "(Todos)" and cable["name"] == selected_troncal)
-                color = "#3b82f6" if not es_seleccionado else "#22d3ee"
-                weight = 5 if not es_seleccionado else 7
-                opacity = 0.9 if not es_seleccionado else 1.0
-
                 folium.PolyLine(
                     locations=cable["coords"],
-                    color=color,
-                    weight=weight,
-                    opacity=opacity,
+                    color="#3b82f6",
+                    weight=5,
+                    opacity=0.9,
                     tooltip=f"Troncal: {cable['name']}",
                     popup=f"Cable troncal: {cable['name']}"
                 ).add_to(fg_troncales)
 
-            # CABLES DERIVACIONES
+            # ----- CABLES DERIVACIÓN -----
             for cable in data["cables_derivaciones"]:
                 folium.PolyLine(
                     locations=cable["coords"],
-                    color="#f59e0b",          # naranja
+                    color="#f59e0b",
                     weight=3,
                     opacity=0.8,
                     tooltip=f"Derivación: {cable['name']}",
                     popup=f"Cable derivación: {cable['name']}"
                 ).add_to(fg_deriv)
 
-            # CABLES PRECONECTORIZADOS
+            # ----- CABLES PRECONECTORIZADOS -----
             for cable in data["cables_preconect"]:
                 folium.PolyLine(
                     locations=cable["coords"],
-                    color="#a855f7",          # violeta
+                    color="#a855f7",
                     weight=2,
                     opacity=0.9,
                     dash_array="4,4",
@@ -749,14 +717,14 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                     popup=f"Cable preconectorizado: {cable['name']}"
                 ).add_to(fg_precon)
 
-            # CAJAS HUB
+            # ----- CAJAS HUB -----
             for hub in data["cajas_hub"]:
                 folium.RegularPolygonMarker(
                     location=[hub["lat"], hub["lon"]],
                     number_of_sides=4,
                     radius=10,
                     rotation=45,
-                    color="#38bdf8",         # celeste
+                    color="#38bdf8",
                     weight=2,
                     fill=True,
                     fill_color="#38bdf8",
@@ -764,14 +732,14 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                     popup=f"CAJA HUB: {hub['name']}"
                 ).add_to(fg_hub)
 
-            # CAJAS NAP
+            # ----- CAJAS NAP -----
             for nap in data["cajas_nap"]:
                 folium.RegularPolygonMarker(
                     location=[nap["lat"], nap["lon"]],
                     number_of_sides=3,
                     radius=9,
                     rotation=0,
-                    color="#22c55e",         # verde
+                    color="#22c55e",
                     weight=2,
                     fill=True,
                     fill_color="#22c55e",
@@ -779,14 +747,14 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                     popup=f"CAJA NAP: {nap['name']}"
                 ).add_to(fg_nap)
 
-            # FOSC / BOTELLAS
+            # ----- FOSC / BOTELLAS -----
             for bot in data["botellas"]:
                 folium.RegularPolygonMarker(
                     location=[bot["lat"], bot["lon"]],
                     number_of_sides=4,
                     radius=8,
                     rotation=0,
-                    color="#e11d48",         # magenta/rojo
+                    color="#e11d48",
                     weight=2,
                     fill=True,
                     fill_color="#e11d48",
@@ -794,12 +762,12 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
                     popup=f"FOSC / BOTELLA: {bot['name']}"
                 ).add_to(fg_fosc)
 
-            # Control de capas (colapsado para "ocultar" el menú)
+            # Control de capas (colapsado → solo el ícono, adentro todas las capas)
             folium.LayerControl(collapsed=True).add_to(m)
 
             st_folium(m, width="100%", height=650, key="mapa_kmz")
 
-            # ------------ DISTRIBUCIÓN PRECON EN EXPANDER ------------
+            # --------- DISTRIBUCIÓN PRECON EN EXPANDER ---------
             if cant_precon > 0:
                 with st.expander("Distribución de cables preconectorizados por longitud"):
                     filas_precon_panel = []
@@ -819,6 +787,7 @@ Subí un diseño FTTH en formato **KMZ** y visualizá el NODO, troncales, deriva
             else:
                 with st.expander("Distribución de cables preconectorizados por longitud"):
                     st.info("No se encontraron cables preconectorizados en el diseño.")
+
 
 
 # =========================
