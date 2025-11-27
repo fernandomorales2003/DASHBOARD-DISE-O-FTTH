@@ -522,6 +522,9 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
     # --------- CARGA KMZ (ARRIBA, 100%) ---------
     st.subheader("Carga de diseño (KMZ)")
 
+    if "kmz_data" not in st.session_state:
+        st.session_state.kmz_data = None
+
     kmz_file = st.file_uploader("Seleccioná un archivo KMZ", type=["kmz"], key="kmz_uploader")
 
     if kmz_file is not None:
@@ -549,7 +552,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
         # Totales para panel
         total_troncal_m = 0.0
         total_deriv_m = 0.0
-        total_precon_m = 0.0  # por si lo queremos usar después
+        total_precon_m = 0.0  # por si lo querés usar después
 
         # Buckets de precon por rango de distancia
         buckets_precon = [
@@ -563,7 +566,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
         precon_counts = {label: 0 for (label, _, _) in buckets_precon}
         precon_mayor_300 = 0
 
-        # Longitudes
+        # Longitudes por tipo de cable
         for cable in data["cables_troncales"]:
             total_troncal_m += longitud_total_km(cable["coords"]) * 1000.0
 
@@ -856,6 +859,84 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
         else:
             with st.expander("Distribución de cables preconectorizados por longitud"):
                 st.info("No se encontraron cables preconectorizados en el diseño.")
+
+        # --------- CÁLCULO DE ATENUACIÓN POR NAP (MODELO BALANCEADO) ---------
+        with st.expander("Cálculo de atenuación por NAP (modelo balanceado)", expanded=False):
+            st.markdown(
+                """
+Modelo simplificado:
+
+- Distancia = Nodo → HUB + HUB → NAP (línea recta).
+- NAP → ONT no se modela en distancia, pero se suma **1 dB fijo** por instalación.
+- Se consideran **2 empalmes fijos** (HUB + NAP) + empalmes adicionales que definas.
+- La longitud del precon se usa solo como referencia topológica (no suma fibra en este modelo).
+"""
+            )
+
+            opciones_splitter = {
+                "Sin splitter": 0.0,
+                "1:2 (≈ 3,5 dB)": 3.5,
+                "1:4 (≈ 7,2 dB)": 7.2,
+                "1:8 (≈ 10,5 dB)": 10.5,
+                "1:16 (≈ 13,5 dB)": 13.5,
+                "1:32 (≈ 17 dB)": 17.0,
+                "1:64 (≈ 20,5 dB)": 20.5
+            }
+
+            c1, c2 = st.columns(2)
+            with c1:
+                pot_olt_dbm = st.number_input("Potencia OLT (dBm)", value=3.0, step=0.5)
+                sens_ont_dbm = st.number_input("Sensibilidad mínima ONT (dBm)", value=-27.0, step=0.5)
+                atenuacion_db_km = st.number_input("Atenuación fibra (dB/km)", value=0.21, step=0.01)
+            with c2:
+                perd_conector_db = st.number_input("Pérdida por conector (dB)", value=0.25, step=0.01)
+                perd_empalme_db = st.number_input("Pérdida por empalme (dB)", value=0.10, step=0.01)
+                conectores_por_enlace = st.number_input("Conectores por enlace OLT–ONT", value=6, step=1)
+
+            c3, c4 = st.columns(2)
+            with c3:
+                splitter_hub = st.selectbox("Splitter en HUB", list(opciones_splitter.keys()), index=2)
+            with c4:
+                splitter_nap = st.selectbox("Splitter en NAP", list(opciones_splitter.keys()), index=3)
+
+            perd_splitter_hub_db = opciones_splitter[splitter_hub]
+            perd_splitter_nap_db = opciones_splitter[splitter_nap]
+
+            c5, c6 = st.columns(2)
+            with c5:
+                empalmes_adicionales = st.number_input(
+                    "Empalmes adicionales por enlace (además de HUB+NAP)",
+                    value=0,
+                    min_value=0,
+                    step=1
+                )
+            with c6:
+                perd_instalacion_db = st.number_input(
+                    "Pérdida fija instalación NAP–ONT (dB)",
+                    value=1.0,
+                    step=0.1
+                )
+
+            if st.button("⚙️ Calcular atenuación por NAP", key="btn_calc_atenuacion"):
+                df_atenuacion = calcular_atenuacion_por_nap_desde_kmz(
+                    data=data,
+                    pot_olt_dbm=pot_olt_dbm,
+                    sens_ont_dbm=sens_ont_dbm,
+                    atenuacion_db_km=atenuacion_db_km,
+                    perd_conector_db=perd_conector_db,
+                    perd_empalme_db=perd_empalme_db,
+                    perd_splitter_hub_db=perd_splitter_hub_db,
+                    perd_splitter_nap_db=perd_splitter_nap_db,
+                    conectores_por_enlace=conectores_por_enlace,
+                    empalmes_adicionales=empalmes_adicionales,
+                    perd_instalacion_db=perd_instalacion_db
+                )
+
+                if df_atenuacion.empty:
+                    st.warning("No se pudo calcular la atenuación: faltan NODO, HUB o NAP en el diseño.")
+                else:
+                    st.markdown("#### Resultado de atenuación por NAP")
+                    st.dataframe(df_atenuacion, use_container_width=True, hide_index=True)
 
 # =========================
 # TAB 3 — ESTADÍSTICAS & RESUMEN
