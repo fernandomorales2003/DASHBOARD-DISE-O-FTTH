@@ -7,7 +7,6 @@ from branca.element import Element
 import zipfile
 import xml.etree.ElementTree as ET
 import math
-from folium.plugins import GroupedLayerControl
 
 
 st.set_page_config(
@@ -656,7 +655,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
             """
             m.get_root().header.add_child(Element(css))
 
-            # ========= CAPAS BASE (agrupadas en "Capas principales") =========
+            # ========= CAPAS BASE =========
             fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
             fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
             fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
@@ -681,12 +680,10 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     popup=f"NODO: {nodo['name']}"
                 ).add_to(fg_nodo)
 
-            # ========= CABLES TRONCALES (cada uno en su subcapa) =========
-            troncal_layers = {}
+            # ========= CABLES TRONCALES (cada uno en su propia capa) =========
             for cable in data["cables_troncales"]:
-                layer_name = f"Troncal - {cable['name']}"
                 fg_troncal = folium.FeatureGroup(
-                    name=layer_name,
+                    name=f"TRONCAL | {cable['name']}",
                     show=True
                 )
                 fg_troncal.add_to(m)
@@ -700,14 +697,10 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     popup=f"Cable troncal: {cable['name']}"
                 ).add_to(fg_troncal)
 
-                troncal_layers[layer_name] = fg_troncal
-
-            # ========= CABLES DERIVACIÓN (cada uno en su subcapa) =========
-            deriv_layers = {}
+            # ========= CABLES DERIVACIÓN (cada uno en su propia capa) =========
             for cable in data["cables_derivaciones"]:
-                layer_name = f"Derivación - {cable['name']}"
                 fg_deriv = folium.FeatureGroup(
-                    name=layer_name,
+                    name=f"DERIVACIÓN | {cable['name']}",
                     show=True
                 )
                 fg_deriv.add_to(m)
@@ -720,8 +713,6 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     tooltip=f"Derivación: {cable['name']}",
                     popup=f"Cable derivación: {cable['name']}"
                 ).add_to(fg_deriv)
-
-                deriv_layers[layer_name] = fg_deriv
 
             # ========= CABLES PRECONECTORIZADOS (todos juntos) =========
             for cable in data["cables_preconect"]:
@@ -780,22 +771,12 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     popup=f"FOSC / BOTELLA: {bot['name']}"
                 ).add_to(fg_fosc)
 
-            # ========= CONTROL DE CAPAS AGRUPADO =========
-            groups = {
-                "Capas principales": {
-                    "Nodos": fg_nodo,
-                    "Cajas HUB": fg_hub,
-                    "Cajas NAP": fg_nap,
-                    "FOSC / Botellas": fg_fosc,
-                },
-                "Cables troncales": troncal_layers,  # cada troncal como subcapa
-                "Cables derivación": deriv_layers,   # cada derivación como subcapa
-                "Cables preconectorizados": {
-                    "Preconectorizados (todos)": fg_precon
-                }
-            }
-
-            GroupedLayerControl(groups=groups, collapsed=True).add_to(m)
+            # ========= CONTROL DE CAPAS =========
+            # Colapsado: solo el ícono; adentro se ven:
+            # - Nodos, HUB, NAP, FOSC, Precon (todos)
+            # - TRONCAL | ...
+            # - DERIVACIÓN | ...
+            folium.LayerControl(collapsed=True).add_to(m)
 
             st_folium(m, width="100%", height=650, key="mapa_kmz")
 
@@ -819,7 +800,6 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
             else:
                 with st.expander("Distribución de cables preconectorizados por longitud"):
                     st.info("No se encontraron cables preconectorizados en el diseño.")
-
 
 # =========================
 # TAB 3 — ESTADÍSTICAS & RESUMEN
