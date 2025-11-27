@@ -504,6 +504,7 @@ Ajustá los parámetros del enlace y visualizá el mapa lógico junto con el pre
         st.dataframe(df_perdidas, use_container_width=True, hide_index=True)
 
         st.info(resultados["comentario"])
+
 # =========================
 # TAB 2 — MAPA FTTH (KMZ)
 # =========================
@@ -654,21 +655,17 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
             """
             m.get_root().header.add_child(Element(css))
 
-            # FeatureGroups (cada subelemento aparece como capa en el menú)
+            # FeatureGroups generales
             fg_nodo = folium.FeatureGroup(name="Nodos", show=True)
             fg_hub = folium.FeatureGroup(name="Cajas HUB", show=True)
             fg_nap = folium.FeatureGroup(name="Cajas NAP", show=True)
             fg_fosc = folium.FeatureGroup(name="FOSC / Botellas", show=True)
-            fg_troncales = folium.FeatureGroup(name="Cables troncales", show=True)
-            fg_deriv = folium.FeatureGroup(name="Cables derivación", show=True)
-            fg_precon = folium.FeatureGroup(name="Cables preconectorizados", show=True)
+            fg_precon = folium.FeatureGroup(name="Cables preconectorizados (todos)", show=True)
 
             fg_nodo.add_to(m)
             fg_hub.add_to(m)
             fg_nap.add_to(m)
             fg_fosc.add_to(m)
-            fg_troncales.add_to(m)
-            fg_deriv.add_to(m)
             fg_precon.add_to(m)
 
             # ----- NODOS -----
@@ -683,8 +680,14 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     popup=f"NODO: {nodo['name']}"
                 ).add_to(fg_nodo)
 
-            # ----- CABLES TRONCALES -----
+            # ----- CABLES TRONCALES (cada cable con su propia capa) -----
             for cable in data["cables_troncales"]:
+                fg_troncal = folium.FeatureGroup(
+                    name=f"Troncal - {cable['name']}",
+                    show=True
+                )
+                fg_troncal.add_to(m)
+
                 folium.PolyLine(
                     locations=cable["coords"],
                     color="#3b82f6",
@@ -692,10 +695,16 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     opacity=0.9,
                     tooltip=f"Troncal: {cable['name']}",
                     popup=f"Cable troncal: {cable['name']}"
-                ).add_to(fg_troncales)
+                ).add_to(fg_troncal)
 
-            # ----- CABLES DERIVACIÓN -----
+            # ----- CABLES DERIVACIÓN (cada cable con su propia capa) -----
             for cable in data["cables_derivaciones"]:
+                fg_deriv = folium.FeatureGroup(
+                    name=f"Derivación - {cable['name']}",
+                    show=True
+                )
+                fg_deriv.add_to(m)
+
                 folium.PolyLine(
                     locations=cable["coords"],
                     color="#f59e0b",
@@ -705,7 +714,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
                     popup=f"Cable derivación: {cable['name']}"
                 ).add_to(fg_deriv)
 
-            # ----- CABLES PRECONECTORIZADOS -----
+            # ----- CABLES PRECONECTORIZADOS (todos juntos en una capa) -----
             for cable in data["cables_preconect"]:
                 folium.PolyLine(
                     locations=cable["coords"],
@@ -787,6 +796,7 @@ cables preconectorizados, HUB, NAP y FOSC sobre el mapa.
             else:
                 with st.expander("Distribución de cables preconectorizados por longitud"):
                     st.info("No se encontraron cables preconectorizados en el diseño.")
+
 
 
 
